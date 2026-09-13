@@ -117,7 +117,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> She
     egui::Frame::new()
         .fill(palette::PANEL)
         .stroke(egui::Stroke::new(1.0, palette::ACCENT))
-        .corner_radius(4.0))
+        .corner_radius(4.0)
         .inner_margin(egui::Margin {
             left: 8,
             right: 8,
