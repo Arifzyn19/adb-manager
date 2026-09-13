@@ -145,8 +145,8 @@ fn drop_zone(ui: &mut egui::Ui, state: &mut AppState, hovering: bool, actions: &
                 palette::BORDER_STRONG
             },
         ))
-        .corner_radius(6.0.into())
-        .inner_margin(28.0.into())
+        .corner_radius(6.0))
+        .inner_margin(28.0))
         .show(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.label(egui::RichText::new("⬆").size(30.0).color(if hovering {

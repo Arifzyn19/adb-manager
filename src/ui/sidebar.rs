@@ -29,7 +29,7 @@ pub fn show(ui: &mut egui::Ui, current: &mut Page) {
         // Accent brand mark.
         egui::Frame::new()
             .fill(palette::ACCENT)
-            .corner_radius(4.0.into())
+            .corner_radius(4.0))
             .inner_margin(egui::Margin::same(4))
             .show(ui, |ui| {
                 ui.label(
@@ -100,7 +100,7 @@ fn nav_item(ui: &mut egui::Ui, current: &mut Page, page: Page, icon: &str, label
             egui::Color32::TRANSPARENT
         })
         .stroke(egui::Stroke::NONE)
-        .corner_radius(4.0.into()),
+        .corner_radius(4.0)),
     );
     if resp.clicked() {
         *current = page;

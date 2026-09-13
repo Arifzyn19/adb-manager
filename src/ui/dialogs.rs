@@ -268,8 +268,8 @@ fn pump_camera_frame(
     egui::Frame::new()
         .fill(palette::BG_SUNKEN)
         .stroke(egui::Stroke::new(1.0, palette::ACCENT))
-        .corner_radius(4.0.into())
-        .inner_margin(4.0.into())
+        .corner_radius(4.0))
+        .inner_margin(4.0))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new("SCAN AREA — hold the QR code inside")

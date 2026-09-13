@@ -33,8 +33,8 @@ pub fn panel<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> egui::I
     egui::Frame::new()
         .fill(palette::PANEL)
         .stroke(egui::Stroke::new(metrics::STROKE, palette::BORDER))
-        .corner_radius(metrics::RADIUS_PANEL.into())
-        .inner_margin(metrics::PAD_PANEL.into())
+        .corner_radius(metrics::RADIUS_PANEL))
+        .inner_margin(metrics::PAD_PANEL))
         .show(ui, add_contents)
 }
 
@@ -46,8 +46,8 @@ pub fn sunken_panel<R>(
     egui::Frame::new()
         .fill(palette::BG_SUNKEN)
         .stroke(egui::Stroke::new(metrics::STROKE, palette::BORDER))
-        .corner_radius(metrics::RADIUS_PANEL.into())
-        .inner_margin(metrics::PAD_PANEL.into())
+        .corner_radius(metrics::RADIUS_PANEL))
+        .inner_margin(metrics::PAD_PANEL))
         .show(ui, add_contents)
 }
 
@@ -74,7 +74,7 @@ pub fn primary_button(ui: &mut Ui, label: &str) -> Response {
     ui.add(
         egui::Button::new(RichText::new(label).color(Color32::WHITE))
             .fill(palette::ACCENT)
-            .corner_radius(metrics::RADIUS_WIDGET.into()),
+            .corner_radius(metrics::RADIUS_WIDGET)),
     )
 }
 
@@ -84,7 +84,7 @@ pub fn secondary_button(ui: &mut Ui, label: &str) -> Response {
         egui::Button::new(label)
             .fill(palette::PANEL)
             .stroke(egui::Stroke::new(metrics::STROKE, palette::BORDER))
-            .corner_radius(metrics::RADIUS_WIDGET.into()),
+            .corner_radius(metrics::RADIUS_WIDGET)),
     )
 }
 
@@ -94,7 +94,7 @@ pub fn danger_button(ui: &mut Ui, label: &str) -> Response {
         egui::Button::new(RichText::new(label).color(palette::ERROR))
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::new(metrics::STROKE, palette::ERROR))
-            .corner_radius(metrics::RADIUS_WIDGET.into()),
+            .corner_radius(metrics::RADIUS_WIDGET)),
     )
 }
 
@@ -128,7 +128,7 @@ pub fn pill(ui: &mut Ui, label: &str, color: Color32, tint: Color32) {
     egui::Frame::new()
         .fill(tint)
         .stroke(egui::Stroke::new(1.0, color))
-        .corner_radius(9.0.into())
+        .corner_radius(9.0))
         .inner_margin(egui::Margin {
             left: 8,
             right: 8,
@@ -194,7 +194,7 @@ pub fn segmented<T: Copy + PartialEq>(ui: &mut Ui, options: &[(T, &str)], curren
                         palette::BORDER
                     },
                 ))
-                .corner_radius(metrics::RADIUS_WIDGET.into()),
+                .corner_radius(metrics::RADIUS_WIDGET)),
             );
             if resp.clicked() {
                 *current = *value;
@@ -286,8 +286,8 @@ pub fn error_panel(ui: &mut Ui, message: &str, details: Option<&str>) {
     egui::Frame::new()
         .fill(palette::ERROR_TINT)
         .stroke(egui::Stroke::new(metrics::STROKE, palette::ERROR))
-        .corner_radius(metrics::RADIUS_PANEL.into())
-        .inner_margin(metrics::PAD_PANEL.into())
+        .corner_radius(metrics::RADIUS_PANEL))
+        .inner_margin(metrics::PAD_PANEL))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.colored_label(palette::ERROR, "✕");

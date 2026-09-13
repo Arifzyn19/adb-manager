@@ -1214,7 +1214,7 @@ impl AdbManagerApp {
                     egui::Frame::new()
                         .fill(palette::PANEL)
                         .stroke(egui::Stroke::new(1.0, color))
-                        .corner_radius(4.0.into())
+                        .corner_radius(4.0))
                         .inner_margin(egui::Margin {
                             left: 10,
                             right: 10,
