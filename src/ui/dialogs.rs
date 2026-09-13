@@ -1,9 +1,5 @@
-//! Connect Device dialog.
-//!
-//! - USB: guidance + visible devices.
-//! - Wireless (Phase 3): QR scan (camera or image file, decoded locally) +
-//!   pairing-code form with explicit pairing state.
-//! - Manual: `adb connect IP:ADB_PORT` (connection port ≠ pairing port).
+//! Connect Device dialog: USB overview, wireless QR + pairing-code flows
+//! with explicit pairing state, manual `adb connect`.
 
 use crate::adb::AdbClient;
 use crate::events::{AppEvent, Toast};
@@ -12,6 +8,8 @@ use crate::pairing::{
     PairingRequest, PairingState,
 };
 use crate::state::AppState;
+use crate::ui::components;
+use crate::ui::theme::palette;
 use std::sync::mpsc::Sender;
 
 #[derive(Default)]
@@ -60,13 +58,17 @@ pub fn show(
     egui::Window::new("Connect Device")
         .open(&mut open)
         .resizable(true)
-        .default_width(480.0)
+        .default_width(520.0)
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut dlg.tab, ConnectTab::Usb, "USB");
-                ui.selectable_value(&mut dlg.tab, ConnectTab::Wireless, "Wireless");
-                ui.selectable_value(&mut dlg.tab, ConnectTab::Manual, "Manual");
-            });
+            components::segmented(
+                ui,
+                &[
+                    (ConnectTab::Usb, "USB"),
+                    (ConnectTab::Wireless, "Wireless"),
+                    (ConnectTab::Manual, "Manual"),
+                ],
+                &mut dlg.tab,
+            );
             ui.separator();
 
             match dlg.tab {
@@ -85,18 +87,29 @@ pub fn show(
 
 fn usb_tab(ui: &mut egui::Ui, state: &AppState) {
     ui.label("Connect your phone via USB with USB debugging enabled.");
-    ui.label("Accept the on-device authorization prompt if asked.");
+    ui.label(
+        egui::RichText::new("Accept the on-device authorization prompt if asked.")
+            .color(palette::TEXT_DIM),
+    );
     ui.add_space(4.0);
-    ui.label(format!(
-        "Devices visible right now: {}",
-        state.devices.len()
-    ));
+    components::kv_line(ui, "Devices visible", &state.devices.len().to_string());
     for d in &state.devices {
-        ui.monospace(format!("{}  ({})", d.serial, d.state.label()));
+        ui.horizontal(|ui| {
+            ui.colored_label(
+                if d.state.is_usable() {
+                    palette::SUCCESS
+                } else {
+                    palette::WARNING
+                },
+                "●",
+            );
+            ui.monospace(format!("{}  ({})", d.serial, d.state.label()));
+        });
     }
     if state.devices.iter().any(|d| !d.state.is_usable()) {
-        ui.colored_label(
-            egui::Color32::YELLOW,
+        ui.add_space(4.0);
+        components::warning_line(
+            ui,
             "An unauthorized/offline device is visible — check the phone screen.",
         );
     }
@@ -112,52 +125,55 @@ fn wireless_tab(
 ) {
     // --- Pairing state ---
     ui.horizontal(|ui| {
-        ui.strong("Pairing status:");
-        let (text, color) = match state.pairing {
-            PairingState::Idle => ("Not paired".to_string(), egui::Color32::GRAY),
-            PairingState::Pairing => ("Pairing…".to_string(), egui::Color32::LIGHT_BLUE),
-            PairingState::Paired => ("Paired ✓".to_string(), egui::Color32::GREEN),
-            PairingState::Failed => ("Pairing failed".to_string(), egui::Color32::RED),
+        ui.label(egui::RichText::new("Pairing status:").color(palette::TEXT_DIM));
+        let (text, color, tint) = match state.pairing {
+            PairingState::Idle => ("NOT PAIRED", palette::TEXT_DIM, palette::PANEL),
+            PairingState::Pairing => ("PAIRING", palette::ACCENT_BRIGHT, palette::ACCENT_TINT),
+            PairingState::Paired => ("PAIRED", palette::SUCCESS, palette::SUCCESS_TINT),
+            PairingState::Failed => ("FAILED", palette::ERROR, palette::ERROR_TINT),
         };
-        ui.colored_label(color, text);
+        components::pill(ui, text, color, tint);
     });
     if let Some(msg) = state.pairing_message.clone() {
         ui.monospace(msg);
     }
     if state.pairing == PairingState::Paired {
-        ui.colored_label(
-            egui::Color32::GREEN,
-            "Paired! Now open the Manual tab and connect with the ADB \
-             connection port (it differs from the pairing port).",
+        ui.label(
+            egui::RichText::new(
+                "Paired! Now open the Manual tab and connect with the ADB \
+                 connection port (it differs from the pairing port).",
+            )
+            .color(palette::SUCCESS),
         );
     }
     ui.separator();
 
     // --- QR scan ---
-    ui.strong("1. Scan the phone's QR code (fills in the pairing code)");
-    ui.label("On the phone: Developer options → Wireless debugging → Pair device with QR code.");
+    components::section_title(ui, "1 · SCAN THE PHONE'S QR CODE");
+    ui.label(
+        egui::RichText::new(
+            "On the phone: Developer options → Wireless debugging → Pair device with QR code.",
+        )
+        .small()
+        .color(palette::TEXT_DIM),
+    );
     qr_section(ctx, ui, dlg, events);
     ui.separator();
 
     // --- Pairing-code form ---
-    ui.strong("2. Pair with IP + pairing port + code");
+    components::section_title(ui, "2 · PAIR WITH CODE");
     ui.label(
-        "Use the *pairing* port from the phone dialog (e.g. 37001) — not the connection port.",
+        egui::RichText::new(
+            "Use the pairing port from the phone dialog (e.g. 37001) — not the connection port.",
+        )
+        .small()
+        .color(palette::TEXT_DIM),
     );
-    ui.horizontal(|ui| {
-        ui.label("IP address");
-        ui.text_edit_singleline(&mut dlg.pair_ip);
-    });
-    ui.horizontal(|ui| {
-        ui.label("Pairing port");
-        ui.text_edit_singleline(&mut dlg.pair_port);
-    });
-    ui.horizontal(|ui| {
-        ui.label("Pairing code");
-        ui.text_edit_singleline(&mut dlg.pair_code);
-    });
+    components::field_row(ui, "IP address", &mut dlg.pair_ip, "192.168.1.20");
+    components::field_row(ui, "Pairing port", &mut dlg.pair_port, "37001");
+    components::field_row(ui, "Pairing code", &mut dlg.pair_code, "6-digit code");
     if let Some(err) = dlg.pair_form_error.clone() {
-        ui.colored_label(egui::Color32::YELLOW, err);
+        components::warning_line(ui, &err);
     }
     ui.add_space(4.0);
     let can_pair = !state.pairing.in_progress() && state.config.adb_path.is_some();
@@ -178,7 +194,7 @@ fn wireless_tab(
         }
     }
     if state.config.adb_path.is_none() {
-        ui.label("Configure ADB in Settings first.");
+        ui.label(egui::RichText::new("Configure ADB in Settings first.").color(palette::TEXT_DIM));
     }
 }
 
@@ -188,10 +204,14 @@ fn qr_section(
     dlg: &mut ConnectDialogState,
     events: &Sender<AppEvent>,
 ) {
-    ui.label("Camera frames are decoded on this PC only — never uploaded.");
+    ui.label(
+        egui::RichText::new("Camera frames are decoded on this PC only — never uploaded.")
+            .small()
+            .color(palette::TEXT_FAINT),
+    );
     ui.horizontal(|ui| {
         if dlg.camera.is_none() {
-            if ui.button("Start camera").clicked() {
+            if components::secondary_button(ui, "Start camera").clicked() {
                 match CameraScanner::open_default() {
                     Ok(camera) => {
                         dlg.camera = Some(camera);
@@ -205,10 +225,10 @@ fn qr_section(
                     }
                 }
             }
-            if ui.button("Load QR image…").clicked() {
+            if components::secondary_button(ui, "Load QR image…").clicked() {
                 load_qr_image(dlg, events);
             }
-        } else if ui.button("Stop camera").clicked() {
+        } else if components::secondary_button(ui, "Stop camera").clicked() {
             dlg.camera = None;
         }
     });
@@ -244,20 +264,36 @@ fn pump_camera_frame(
         None => return,
     };
 
-    let color = egui::ColorImage::from_rgba_unmultiplied(
-        [frame.width as usize, frame.height as usize],
-        &frame.rgba,
-    );
-    match dlg.qr_texture.as_mut() {
-        Some(tex) => tex.set(color, egui::TextureOptions::LINEAR),
-        None => {
-            dlg.qr_texture =
-                Some(ctx.load_texture("qr-preview", color, egui::TextureOptions::LINEAR));
-        }
-    }
+    // Scan-area frame with corner emphasis.
+    egui::Frame::new()
+        .fill(palette::BG_SUNKEN)
+        .stroke(egui::Stroke::new(1.0, palette::ACCENT))
+        .corner_radius(4.0.into())
+        .inner_margin(4.0.into())
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("SCAN AREA — hold the QR code inside")
+                    .small()
+                    .color(palette::ACCENT_BRIGHT),
+            );
+            let color = egui::ColorImage::from_rgba_unmultiplied(
+                [frame.width as usize, frame.height as usize],
+                &frame.rgba,
+            );
+            match dlg.qr_texture.as_mut() {
+                Some(tex) => tex.set(color, egui::TextureOptions::LINEAR),
+                None => {
+                    dlg.qr_texture =
+                        Some(ctx.load_texture("qr-preview", color, egui::TextureOptions::LINEAR));
+                }
+            }
+            if let Some(tex) = &dlg.qr_texture {
+                ui.image((tex.id(), egui::vec2(320.0, 240.0)));
+            }
+        });
 
     dlg.qr_frames += 1;
-    if dlg.qr_frames % 10 == 0 {
+    if dlg.qr_frames.is_multiple_of(10) {
         if let Some(raw) =
             image::ImageBuffer::from_raw(frame.width, frame.height, frame.rgba.clone())
         {
@@ -270,10 +306,6 @@ fn pump_camera_frame(
                 }
             }
         }
-    }
-
-    if let Some(tex) = &dlg.qr_texture {
-        ui.image((tex.id(), egui::vec2(320.0, 240.0)));
     }
 }
 
@@ -331,14 +363,15 @@ fn manual_tab(
     events: &Sender<AppEvent>,
 ) {
     ui.label("Connect to an already-paired device with its ADB connection port.");
-    ui.horizontal(|ui| {
-        ui.label("IP address");
-        ui.text_edit_singleline(&mut dlg.ip);
-    });
-    ui.horizontal(|ui| {
-        ui.label("ADB port");
-        ui.text_edit_singleline(&mut dlg.port);
-    });
+    ui.label(
+        egui::RichText::new(
+            "This is the connection port from Wireless debugging — not the pairing port.",
+        )
+        .small()
+        .color(palette::TEXT_DIM),
+    );
+    components::field_row(ui, "IP address", &mut dlg.ip, "192.168.1.20");
+    components::field_row(ui, "ADB port", &mut dlg.port, "5555");
     ui.add_space(4.0);
     let can_go = !dlg.busy && !dlg.ip.trim().is_empty() && !dlg.port.trim().is_empty();
     if ui

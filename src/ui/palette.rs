@@ -112,18 +112,22 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) -> Option<PaletteAction> 
         return None;
     }
 
-    egui::Window::new("Command palette  (Ctrl+K)")
+    egui::Window::new("⌕ Command palette")
         .collapsible(false)
         .resizable(false)
         .show(ctx, |ui| {
-            ui.set_min_width(360.0);
-            let resp = ui.text_edit_singleline(&mut state.palette_query);
-            // Keep the keyboard where the user expects it.
-            resp.request_focus();
+            ui.set_min_width(380.0);
+            ui.add(
+                egui::TextEdit::singleline(&mut state.palette_query)
+                    .hint_text("Type a command — pages, connect, refresh…"),
+            )
+            .request_focus();
 
             let hits = filter_items(&state.palette_query);
             if hits.is_empty() {
-                ui.colored_label(crate::ui::theme::StatusColors::muted(), "No matches.");
+                ui.label(
+                    egui::RichText::new("No matches.").color(crate::ui::theme::palette::TEXT_DIM),
+                );
                 return;
             }
             // Clamp the cursor into the hit list.
@@ -145,12 +149,19 @@ pub fn show(ctx: &egui::Context, state: &mut AppState) -> Option<PaletteAction> 
                 .show(ui, |ui| {
                     for (row, idx) in hits.iter().enumerate() {
                         let item = &ITEMS[*idx];
-                        if ui
-                            .selectable_label(row == state.palette_idx, item.title)
-                            .clicked()
-                        {
-                            run = Some(row);
-                        }
+                        ui.horizontal(|ui| {
+                            if ui
+                                .selectable_label(row == state.palette_idx, item.title)
+                                .clicked()
+                            {
+                                run = Some(row);
+                            }
+                            ui.label(
+                                egui::RichText::new(item.hint)
+                                    .small()
+                                    .color(crate::ui::theme::palette::TEXT_FAINT),
+                            );
+                        });
                     }
                 });
             if let Some(row) = run {

@@ -266,9 +266,11 @@ pub struct ApkState {
 pub enum ApkTab {
     #[default]
     Overview,
-    Permissions,
-    Components,
     Manifest,
+    Permissions,
+    Activities,
+    Services,
+    Receivers,
     Files,
     Certificate,
 }
@@ -277,9 +279,11 @@ impl ApkTab {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Overview => "Overview",
-            Self::Permissions => "Permissions",
-            Self::Components => "Activities/Services",
             Self::Manifest => "Manifest",
+            Self::Permissions => "Permissions",
+            Self::Activities => "Activities",
+            Self::Services => "Services",
+            Self::Receivers => "Receivers",
             Self::Files => "Files",
             Self::Certificate => "Certificate",
         }

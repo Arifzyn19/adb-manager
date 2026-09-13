@@ -1,10 +1,10 @@
-//! File Manager page (Phase 8): storage browser rooted at `/sdcard/` with
-//! upload / download / delete / rename / mkdir. Mutations and transfers run
-//! on worker threads; this module only renders state and returns actions.
+//! File Manager page: breadcrumb explorer with upload / download /
+//! delete / rename / mkdir. Mutations run on worker threads via actions.
 
 use crate::files::{parent_dir, FileKind};
 use crate::state::AppState;
-use crate::ui::theme::StatusColors;
+use crate::ui::components::{self, page_header};
+use crate::ui::theme::palette;
 
 /// One user intent from the page; executed by `app.rs` on worker threads.
 pub enum FileOp {
@@ -25,41 +25,20 @@ pub struct FilesActions {
 pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> FilesActions {
     let mut actions = FilesActions::default();
 
-    ui.horizontal(|ui| {
-        ui.heading("Files");
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Refresh").clicked() {
-                actions.refresh = true;
-            }
-            if ui.button("Upload…").clicked() {
-                if let Some(paths) = rfd::FileDialog::new()
-                    .set_title("Select files to upload")
-                    .pick_files()
-                {
-                    let locals: Vec<String> =
-                        paths.iter().map(|p| p.display().to_string()).collect();
-                    if !locals.is_empty() {
-                        actions.op = Some(FileOp::Upload(locals));
-                    }
-                }
-            }
-        });
-    });
+    page_header(ui, "Files", "Android storage browser.");
 
     let Some(device) = state.selected_device().cloned() else {
-        ui.add_space(6.0);
-        ui.label("No Android device connected.");
-        ui.label("Connect a device using USB or Wireless ADB.");
-        if ui.button("Connect Device").clicked() {
-            state.show_connect_dialog = true;
-        }
+        components::no_device_state(ui, state);
         return actions;
     };
     if !device.state.is_usable() {
-        ui.label(format!(
-            "File browser unavailable while the device is '{}'.",
-            device.state.label()
-        ));
+        ui.label(
+            egui::RichText::new(format!(
+                "File browser unavailable while the device is '{}'.",
+                device.state.label()
+            ))
+            .color(palette::TEXT_DIM),
+        );
         return actions;
     }
 
@@ -73,43 +52,74 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Fil
             .collect()
     });
     if !ctx.input(|i| i.raw.hovered_files.is_empty()) {
-        ui.colored_label(StatusColors::accent(), "Drop files here to upload them.");
+        ui.label(
+            egui::RichText::new("Drop files here to upload them.")
+                .color(palette::ACCENT_BRIGHT)
+                .strong(),
+        );
     }
     if !dropped.is_empty() {
         actions.op = Some(FileOp::Upload(dropped));
     }
 
-    // Breadcrumb: Home (configured root) + Up + clickable segments.
+    // Toolbar: breadcrumb, home/up, upload, refresh.
     let cwd = if state.files.cwd.is_empty() {
         state.config.files_root.clone()
     } else {
         state.files.cwd.clone()
     };
-    ui.horizontal_wrapped(|ui| {
-        if ui.small_button("⌂").clicked() {
+    ui.horizontal(|ui| {
+        if components::secondary_button(ui, "⌂").clicked() {
             actions.navigate = Some(state.config.files_root.clone());
         }
-        if ui.small_button("⬆ Up").clicked() {
+        if components::secondary_button(ui, "⬆ Up").clicked() {
             actions.navigate = Some(parent_dir(&cwd));
         }
+        if components::secondary_button(ui, "Refresh").clicked() {
+            actions.refresh = true;
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if components::primary_button(ui, "Upload…").clicked() {
+                if let Some(paths) = rfd::FileDialog::new()
+                    .set_title("Select files to upload")
+                    .pick_files()
+                {
+                    let locals: Vec<String> =
+                        paths.iter().map(|p| p.display().to_string()).collect();
+                    if !locals.is_empty() {
+                        actions.op = Some(FileOp::Upload(locals));
+                    }
+                }
+            }
+        });
+    });
+    breadcrumb(ui, &cwd, &mut actions);
+    ui.horizontal(|ui| {
         ui.monospace(&cwd);
         if state.files.loading {
             ui.spinner();
-            ui.label("Reading…");
+            ui.label(
+                egui::RichText::new("Reading…")
+                    .small()
+                    .color(palette::TEXT_DIM),
+            );
         } else if let Some(busy) = state.files.busy.clone() {
             ui.spinner();
-            ui.label(format!("Working… ({busy})"));
+            ui.label(
+                egui::RichText::new(format!("Working… ({busy})"))
+                    .small()
+                    .color(palette::TEXT_DIM),
+            );
         }
     });
-    breadcrumb(ui, &cwd, &mut actions);
 
     if let Some(err) = state.files.error.clone() {
-        ui.colored_label(StatusColors::error(), format!("✕ {err}"));
+        components::error_panel(ui, &err, None);
         ui.horizontal(|ui| {
-            if ui.button("Retry").clicked() {
+            if components::secondary_button(ui, "Retry").clicked() {
                 actions.refresh = true;
             }
-            if ui.button("Go to root").clicked() {
+            if components::secondary_button(ui, "Go to root").clicked() {
                 actions.navigate = Some(state.config.files_root.clone());
             }
         });
@@ -117,27 +127,26 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Fil
 
     // New-folder row.
     ui.horizontal(|ui| {
-        ui.label("New folder");
-        let resp = ui.text_edit_singleline(&mut state.files.mkdir_name);
+        ui.label(egui::RichText::new("New folder").color(palette::TEXT_DIM));
+        let resp = ui.add(
+            egui::TextEdit::singleline(&mut state.files.mkdir_name)
+                .hint_text("Folder name…")
+                .desired_width(200.0),
+        );
         let name = state.files.mkdir_name.trim().to_string();
-        if name.is_empty() || state.files.busy.is_some() {
-            ui.disable();
-        }
-        let create = ui.button("Create").clicked()
-            || (resp.lost_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                && !name.is_empty());
+        let can_create = !name.is_empty() && state.files.busy.is_none();
+        let create = ui
+            .add_enabled(can_create, egui::Button::new("Create"))
+            .clicked()
+            || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && can_create);
         if create {
             state.files.mkdir_name.clear();
             actions.op = Some(FileOp::Mkdir(name));
         }
     });
 
-    // Search.
-    ui.horizontal(|ui| {
-        ui.label("Search");
-        ui.text_edit_singleline(&mut state.files.search);
-    });
+    components::search_field(ui, &mut state.files.search, "Search this folder…");
+    ui.add_space(4.0);
 
     let query = state.files.search.to_lowercase();
     let rows: Vec<crate::files::FileEntry> = state
@@ -149,28 +158,67 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Fil
         .collect();
 
     if rows.is_empty() && !state.files.loading {
-        ui.add_space(8.0);
-        if state.files.entries.is_empty() {
-            ui.label("This directory is empty.");
-        } else {
-            ui.label("No files match the current search.");
-        }
-        delete_modal(ctx, state, &mut actions);
-        return actions;
+        ui.label(
+            egui::RichText::new(if state.files.entries.is_empty() {
+                "This directory is empty."
+            } else {
+                "No files match the current search."
+            })
+            .color(palette::TEXT_DIM),
+        );
+    } else {
+        ui.label(
+            egui::RichText::new(format!(
+                "{} item{}",
+                rows.len(),
+                if rows.len() == 1 { "" } else { "s" }
+            ))
+            .small()
+            .color(palette::TEXT_DIM),
+        );
+        components::table_header(
+            ui,
+            &[
+                ("", 24.0),
+                ("Name", 260.0),
+                ("Size", 80.0),
+                ("Type", 70.0),
+                ("Modified", 130.0),
+            ],
+        );
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for entry in &rows {
+                file_row(ui, state, entry, &mut actions);
+            }
+        });
     }
 
-    ui.label(format!(
-        "{} item{}",
-        rows.len(),
-        if rows.len() == 1 { "" } else { "s" }
-    ));
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        for entry in &rows {
-            file_row(ui, state, entry, &mut actions);
+    // Two-step delete confirmation (destructive ⇒ ask first, per settings).
+    if let Some(target) = state.files.confirm_delete.clone() {
+        let msg = format!("Delete {target}?");
+        match components::confirm_modal(
+            ctx,
+            "file-delete",
+            "Confirm Delete",
+            &[
+                (&msg, true),
+                ("Folders delete recursively.", false),
+                ("This action cannot be undone.", false),
+            ],
+            "Delete",
+            true,
+        ) {
+            Some(true) => {
+                state.files.confirm_delete = None;
+                actions.op = Some(FileOp::Delete(target));
+            }
+            Some(false) => {
+                state.files.confirm_delete = None;
+            }
+            None => {}
         }
-    });
+    }
 
-    delete_modal(ctx, state, &mut actions);
     actions
 }
 
@@ -180,18 +228,23 @@ fn breadcrumb(ui: &mut egui::Ui, cwd: &str, actions: &mut FilesActions) {
         return;
     }
     ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
         let mut acc = String::new();
         for (i, part) in parts.iter().enumerate() {
             acc.push('/');
             acc.push_str(part);
             if i + 1 < parts.len() {
                 let target = acc.clone();
-                if ui.small_button(*part).clicked() {
+                if ui
+                    .selectable_label(false, *part)
+                    .on_hover_text(format!("Open {target}"))
+                    .clicked()
+                {
                     actions.navigate = Some(target);
                 }
-                ui.label("/");
+                ui.label(egui::RichText::new("/").color(palette::TEXT_FAINT));
             } else {
-                ui.strong(*part);
+                ui.label(egui::RichText::new(*part).strong());
             }
         }
     });
@@ -209,7 +262,7 @@ fn file_row(
         ui.horizontal(|ui| {
             ui.label(entry.kind.icon());
             ui.text_edit_singleline(&mut state.files.rename_new);
-            if ui.small_button("OK").clicked() {
+            if components::primary_button(ui, "OK").clicked() {
                 let new_name = state.files.rename_new.trim().to_string();
                 state.files.rename_target = None;
                 if !new_name.is_empty() && new_name != entry.name {
@@ -221,7 +274,7 @@ fn file_row(
                     });
                 }
             }
-            if ui.small_button("Cancel").clicked() {
+            if components::secondary_button(ui, "Cancel").clicked() {
                 state.files.rename_target = None;
             }
         });
@@ -247,25 +300,45 @@ fn file_row(
         if entry.kind == FileKind::Dir && resp.double_clicked() {
             actions.navigate = Some(entry.path.clone());
         }
-        ui.add_sized([80.0, 18.0], egui::Label::new(entry.size_display()));
         ui.add_sized(
-            [90.0, 18.0],
-            egui::Label::new(entry.perms.clone()).truncate(),
+            [80.0, 18.0],
+            egui::Label::new(
+                egui::RichText::new(entry.size_display())
+                    .monospace()
+                    .color(palette::TEXT_DIM),
+            ),
         );
-        ui.monospace(entry.modified.clone());
+        ui.add_sized(
+            [70.0, 18.0],
+            egui::Label::new(
+                egui::RichText::new(entry.kind.label())
+                    .small()
+                    .color(palette::TEXT_DIM),
+            ),
+        );
+        ui.add_sized(
+            [130.0, 18.0],
+            egui::Label::new(
+                egui::RichText::new(entry.modified.clone())
+                    .monospace()
+                    .small()
+                    .color(palette::TEXT_FAINT),
+            )
+            .truncate(),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("Delete").clicked() {
+            if components::danger_button(ui, "Delete").clicked() {
                 if state.config.confirm_destructive {
                     state.files.confirm_delete = Some(entry.path.clone());
                 } else {
                     actions.op = Some(FileOp::Delete(entry.path.clone()));
                 }
             }
-            if ui.small_button("Rename").clicked() {
+            if components::secondary_button(ui, "Rename").clicked() {
                 state.files.rename_target = Some(entry.path.clone());
                 state.files.rename_new = entry.name.clone();
             }
-            if ui.small_button("Download").clicked() {
+            if components::secondary_button(ui, "Download").clicked() {
                 if let Some(dir) = rfd::FileDialog::new()
                     .set_title("Choose download destination")
                     .pick_folder()
@@ -276,32 +349,9 @@ fn file_row(
                     });
                 }
             }
-            if entry.kind == FileKind::Dir && ui.small_button("Open").clicked() {
+            if entry.kind == FileKind::Dir && components::secondary_button(ui, "Open").clicked() {
                 actions.navigate = Some(entry.path.clone());
             }
         });
     });
-}
-
-/// Two-step delete confirmation (destructive ⇒ ask first, per settings).
-fn delete_modal(ctx: &egui::Context, state: &mut AppState, actions: &mut FilesActions) {
-    let Some(target) = state.files.confirm_delete.clone() else {
-        return;
-    };
-    egui::Window::new("Confirm Delete")
-        .collapsible(false)
-        .show(ctx, |ui| {
-            ui.label("Are you sure you want to delete:");
-            ui.monospace(&target);
-            ui.colored_label(StatusColors::error(), "This action cannot be undone.");
-            ui.horizontal(|ui| {
-                if ui.button("Cancel").clicked() {
-                    state.files.confirm_delete = None;
-                }
-                if ui.button("Delete").clicked() {
-                    state.files.confirm_delete = None;
-                    actions.op = Some(FileOp::Delete(target));
-                }
-            });
-        });
 }

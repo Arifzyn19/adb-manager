@@ -1,12 +1,10 @@
-//! Device Tools page (Phase 10).
-//!
-//! SCREEN (screenshot + recording), SYSTEM (reboot), INFO (battery / memory /
-//! storage / properties) and ADB (server restart, clear logcat). Heavy work
-//! runs on worker threads; this module renders state and returns actions.
+//! Device Tools page: SCREEN / SYSTEM / INFO / ADB sections with
+//! progress, confirms and live snapshots.
 
 use crate::state::{AppState, RecPhase};
 use crate::tools::RebootMode;
-use crate::ui::theme::StatusColors;
+use crate::ui::components::{self, page_header};
+use crate::ui::theme::palette;
 
 /// One user intent; executed by `app.rs` on worker threads.
 pub enum ToolOp {
@@ -28,22 +26,24 @@ pub struct ToolsActions {
 pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> ToolsActions {
     let mut actions = ToolsActions::default();
 
-    ui.heading("Device Tools");
+    page_header(
+        ui,
+        "Device Tools",
+        "Capture, inspect and reboot the selected device.",
+    );
 
     let Some(device) = state.selected_device().cloned() else {
-        ui.add_space(6.0);
-        ui.label("No Android device connected.");
-        ui.label("Connect a device using USB or Wireless ADB.");
-        if ui.button("Connect Device").clicked() {
-            state.show_connect_dialog = true;
-        }
+        components::no_device_state(ui, state);
         return actions;
     };
     if !device.state.is_usable() {
-        ui.label(format!(
-            "Device Tools unavailable while the device is '{}'.",
-            device.state.label()
-        ));
+        ui.label(
+            egui::RichText::new(format!(
+                "Device Tools unavailable while the device is '{}'.",
+                device.state.label()
+            ))
+            .color(palette::TEXT_DIM),
+        );
         return actions;
     }
 
@@ -66,8 +66,8 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Too
 // --- SCREEN ----------------------------------------------------------------
 
 fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions) {
-    ui.strong("SCREEN");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "SCREEN");
+    components::panel(ui, |ui| {
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(!state.tools.shot_busy, egui::Button::new("Take Screenshot"))
@@ -77,18 +77,20 @@ fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActio
             }
             if state.tools.shot_busy {
                 ui.spinner();
-                ui.label("Capturing…");
+                ui.label(
+                    egui::RichText::new("Capturing…")
+                        .small()
+                        .color(palette::TEXT_DIM),
+                );
             }
         });
         if let Some(png) = state.tools.shot_png.clone() {
-            ui.add(
-                egui::Image::from_bytes("bytes://screenshot.png", png).max_height(320.0),
-            );
+            ui.add(egui::Image::from_bytes("bytes://screenshot.png", png).max_height(320.0));
             ui.horizontal(|ui| {
                 if let Some(local) = state.tools.shot_local.clone() {
                     ui.monospace(&local);
                 }
-                if ui.button("Save as…").clicked() {
+                if components::secondary_button(ui, "Save as…").clicked() {
                     if let Some(dest) = rfd::FileDialog::new()
                         .add_filter("PNG image", &["png"])
                         .set_file_name("screenshot.png")
@@ -103,7 +105,7 @@ fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActio
 
         ui.separator();
         ui.horizontal_wrapped(|ui| {
-            ui.label("Record");
+            ui.label(egui::RichText::new("Record").color(palette::TEXT_DIM));
             for secs in [15u32, 30, 60, 120, 180] {
                 if ui
                     .selectable_label(state.tools.rec_limit == secs, format!("{secs}s"))
@@ -116,7 +118,7 @@ fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActio
         match state.tools.rec_phase {
             RecPhase::Idle => {
                 ui.horizontal(|ui| {
-                    if ui.button("Start Recording").clicked() {
+                    if components::primary_button(ui, "Start Recording").clicked() {
                         if let Some(dest) = rfd::FileDialog::new()
                             .add_filter("MP4 video", &["mp4"])
                             .set_file_name("recording.mp4")
@@ -132,12 +134,13 @@ fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActio
                 });
                 if let Some(local) = state.tools.rec_local.clone() {
                     ui.horizontal(|ui| {
-                        ui.colored_label(StatusColors::connected(), "✓ Last recording");
+                        ui.colored_label(palette::SUCCESS, "✓");
+                        ui.label("Last recording");
                         ui.monospace(&local);
                     });
                 }
                 if let Some(err) = state.tools.rec_error.clone() {
-                    ui.colored_label(StatusColors::error(), format!("✕ {err}"));
+                    components::error_panel(ui, &err, None);
                 }
             }
             RecPhase::Recording => {
@@ -154,15 +157,16 @@ fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActio
                         elapsed % 60,
                         state.tools.rec_limit
                     ));
-                    if ui.button("Stop").clicked() {
+                    if components::danger_button(ui, "Stop").clicked() {
                         actions.op = Some(ToolOp::StopRec);
                     }
                 });
             }
         }
-        ui.colored_label(
-            StatusColors::muted(),
-            "Device limits: 180 s max, no audio. Pull happens automatically when the recording ends.",
+        ui.label(
+            egui::RichText::new("Device limits: 180 s max, no audio. Pull happens automatically when the recording ends.")
+                .small()
+                .color(palette::TEXT_FAINT),
         );
     });
 }
@@ -175,8 +179,8 @@ fn show_system(
     state: &mut AppState,
     actions: &mut ToolsActions,
 ) {
-    ui.strong("SYSTEM");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "SYSTEM");
+    components::panel(ui, |ui| {
         let busy = state.tools.busy.is_some();
         ui.horizontal_wrapped(|ui| {
             ui.add_enabled_ui(!busy, |ui| {
@@ -185,7 +189,7 @@ fn show_system(
                     RebootMode::Recovery,
                     RebootMode::Bootloader,
                 ] {
-                    if ui.button(mode.label()).clicked() {
+                    if components::danger_button(ui, mode.label()).clicked() {
                         // Reboots always confirm — the device goes away.
                         state.tools.confirm_reboot = Some(mode);
                     }
@@ -199,28 +203,31 @@ fn show_system(
     });
 
     if let Some(mode) = state.tools.confirm_reboot {
-        egui::Window::new(mode.label())
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "{} {}?",
-                    mode.label(),
-                    state.selected_serial.clone().unwrap_or_default()
-                ));
-                ui.colored_label(
-                    StatusColors::warning(),
+        let target = state.selected_serial.clone().unwrap_or_default();
+        let line = format!("{} {}?", mode.label(), target);
+        match components::confirm_modal(
+            ctx,
+            "tools-reboot",
+            mode.label(),
+            &[
+                (&line, true),
+                (
                     "The device will disconnect. Reconnect it afterwards.",
-                );
-                ui.horizontal(|ui| {
-                    if ui.button("Cancel").clicked() {
-                        state.tools.confirm_reboot = None;
-                    }
-                    if ui.button(mode.label()).clicked() {
-                        state.tools.confirm_reboot = None;
-                        actions.op = Some(ToolOp::Reboot(mode));
-                    }
-                });
-            });
+                    false,
+                ),
+            ],
+            mode.label(),
+            true,
+        ) {
+            Some(true) => {
+                state.tools.confirm_reboot = None;
+                actions.op = Some(ToolOp::Reboot(mode));
+            }
+            Some(false) => {
+                state.tools.confirm_reboot = None;
+            }
+            None => {}
+        }
     }
 }
 
@@ -228,32 +235,35 @@ fn show_system(
 
 fn show_info(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions) {
     ui.horizontal(|ui| {
-        ui.strong("INFO");
+        components::section_title(ui, "INFO");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Refresh").clicked() {
+            if components::secondary_button(ui, "Refresh").clicked() {
                 actions.op = Some(ToolOp::RefreshInfo);
             }
         });
     });
     if state.tools.info_loading {
-        ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label("Reading battery / memory / storage / properties…");
-        });
+        components::loading_state(
+            ui,
+            "Reading device info",
+            "Battery · memory · storage · properties…",
+            None,
+        );
     }
     if let Some(err) = state.tools.info_error.clone() {
-        ui.colored_label(StatusColors::error(), format!("✕ {err}"));
+        components::error_panel(ui, &err, None);
     }
 
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.strong("Battery");
+    components::panel(ui, |ui| {
+        components::section_title(ui, "BATTERY");
         match state.tools.battery.clone() {
             Some(b) => {
                 if let Some(pct) = b.level_pct {
                     ui.add(egui::ProgressBar::new(pct as f32 / 100.0).show_percentage());
                 }
-                info_row(
+                components::kv_grid(
                     ui,
+                    "tool-battery",
                     &[
                         ("Status", b.status.label()),
                         ("Health", b.health.label()),
@@ -282,13 +292,15 @@ fn show_info(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions
                 );
             }
             None => {
-                ui.colored_label(StatusColors::muted(), "No battery data yet — Refresh.");
+                ui.label(
+                    egui::RichText::new("No battery data yet — Refresh.").color(palette::TEXT_DIM),
+                );
             }
         }
     });
 
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.strong("Memory");
+    components::panel(ui, |ui| {
+        components::section_title(ui, "MEMORY");
         match state.tools.memory.clone() {
             Some(m) => {
                 if let Some(pct) = m.used_pct() {
@@ -299,21 +311,28 @@ fn show_info(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions
                     crate::apk::inspector::human_size(m.used_kb() * 1024),
                     crate::apk::inspector::human_size(m.total_kb * 1024),
                 ));
-                ui.colored_label(
-                    StatusColors::muted(),
-                    "From /proc/meminfo (MemAvailable); approximate by nature.",
+                ui.label(
+                    egui::RichText::new(
+                        "From /proc/meminfo (MemAvailable); approximate by nature.",
+                    )
+                    .small()
+                    .color(palette::TEXT_FAINT),
                 );
             }
             None => {
-                ui.colored_label(StatusColors::muted(), "No memory data yet — Refresh.");
+                ui.label(
+                    egui::RichText::new("No memory data yet — Refresh.").color(palette::TEXT_DIM),
+                );
             }
         }
     });
 
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.strong("Storage");
+    components::panel(ui, |ui| {
+        components::section_title(ui, "STORAGE");
         if state.tools.storage.is_empty() {
-            ui.colored_label(StatusColors::muted(), "No storage data yet — Refresh.");
+            ui.label(
+                egui::RichText::new("No storage data yet — Refresh.").color(palette::TEXT_DIM),
+            );
         }
         for row in state.tools.storage.clone() {
             ui.horizontal(|ui| {
@@ -328,18 +347,18 @@ fn show_info(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions
                 ui.add(egui::ProgressBar::new(pct as f32 / 100.0).show_percentage());
             }
         }
-        ui.colored_label(
-            StatusColors::muted(),
-            "Filesystem-level figures from df — not exact app quotas.",
+        ui.label(
+            egui::RichText::new("Filesystem-level figures from df — not exact app quotas.")
+                .small()
+                .color(palette::TEXT_FAINT),
         );
     });
 
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.strong(format!("Properties ({})", state.tools.props.len()));
+    components::panel(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Search");
-            ui.text_edit_singleline(&mut state.tools.props_search);
+            components::section_title(ui, &format!("PROPERTIES ({})", state.tools.props.len()));
         });
+        components::search_field(ui, &mut state.tools.props_search, "Search keys or values…");
         let query = state.tools.props_search.to_lowercase();
         egui::ScrollArea::vertical()
             .max_height(220.0)
@@ -353,7 +372,7 @@ fn show_info(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions
                     }
                     ui.horizontal(|ui| {
                         ui.monospace(&k);
-                        ui.colored_label(StatusColors::muted(), "=");
+                        ui.label(egui::RichText::new("=").color(palette::TEXT_FAINT));
                         ui.monospace(&v);
                     });
                 }
@@ -361,37 +380,28 @@ fn show_info(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions
     });
 }
 
-fn info_row(ui: &mut egui::Ui, rows: &[(&str, &str)]) {
-    egui::Grid::new("tool_info_grid")
-        .num_columns(2)
-        .show(ui, |ui| {
-            for (k, v) in rows {
-                ui.label(*k);
-                ui.monospace(*v);
-                ui.end_row();
-            }
-        });
-}
-
 // --- ADB -------------------------------------------------------------------
 
 fn show_adb(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions) {
-    ui.strong("ADB");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "ADB");
+    components::panel(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             if state.tools.busy.is_some() {
                 ui.disable();
             }
-            if ui.button("Restart ADB server").clicked() {
+            if components::secondary_button(ui, "Restart ADB server").clicked() {
                 actions.op = Some(ToolOp::RestartAdb);
             }
-            if ui.button("Clear Logcat").clicked() {
+            if components::secondary_button(ui, "Clear Logcat").clicked() {
                 actions.op = Some(ToolOp::ClearLogcat);
             }
         });
-        ui.colored_label(
-            StatusColors::muted(),
-            "Restarting ADB drops all connections briefly; devices usually reappear on their own.",
+        ui.label(
+            egui::RichText::new(
+                "Restarting ADB drops all connections briefly; devices usually reappear on their own.",
+            )
+            .small()
+            .color(palette::TEXT_FAINT),
         );
     });
 }

@@ -1183,20 +1183,53 @@ impl AdbManagerApp {
     }
 
     fn show_toasts(&self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("toasts").show(ctx, |ui| {
-            for t in &self.state.toasts {
-                let (icon, color) = match t.toast.kind {
-                    crate::events::ToastKind::Success => ("✓", egui::Color32::GREEN),
-                    crate::events::ToastKind::Info => ("ℹ", egui::Color32::LIGHT_BLUE),
-                    crate::events::ToastKind::Warning => ("⚠", egui::Color32::YELLOW),
-                    crate::events::ToastKind::Error => ("✕", egui::Color32::RED),
-                };
-                ui.horizontal(|ui| {
-                    ui.colored_label(color, icon);
-                    ui.label(&t.toast.message);
-                });
-            }
-        });
+        use crate::ui::theme::palette;
+        egui::TopBottomPanel::top("toasts")
+            .frame(
+                egui::Frame::new()
+                    .fill(palette::BG)
+                    .inner_margin(egui::Margin {
+                        left: 12,
+                        right: 12,
+                        top: 6,
+                        bottom: 2,
+                    }),
+            )
+            .show(ctx, |ui| {
+                for t in &self.state.toasts {
+                    let (icon, color, tint) = match t.toast.kind {
+                        crate::events::ToastKind::Success => {
+                            ("✓", palette::SUCCESS, palette::SUCCESS_TINT)
+                        }
+                        crate::events::ToastKind::Info => {
+                            ("ℹ", palette::ACCENT_BRIGHT, palette::ACCENT_TINT)
+                        }
+                        crate::events::ToastKind::Warning => {
+                            ("⚠", palette::WARNING, palette::WARNING_TINT)
+                        }
+                        crate::events::ToastKind::Error => {
+                            ("✕", palette::ERROR, palette::ERROR_TINT)
+                        }
+                    };
+                    egui::Frame::new()
+                        .fill(palette::PANEL)
+                        .stroke(egui::Stroke::new(1.0, color))
+                        .corner_radius(4.0.into())
+                        .inner_margin(egui::Margin {
+                            left: 10,
+                            right: 10,
+                            top: 5,
+                            bottom: 5,
+                        })
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.colored_label(color, icon);
+                                ui.label(&t.toast.message);
+                            });
+                        });
+                    ui.add_space(2.0);
+                }
+            });
     }
 }
 
@@ -1239,9 +1272,24 @@ impl eframe::App for AdbManagerApp {
 
         egui::SidePanel::left("sidebar")
             .resizable(true)
-            .default_width(190.0)
+            .default_width(200.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(crate::ui::theme::palette::SECONDARY)
+                    .inner_margin(egui::Margin {
+                        left: 10,
+                        right: 10,
+                        top: 6,
+                        bottom: 8,
+                    }),
+            )
             .show(ctx, |ui| {
-                ui::sidebar::show(ui, &mut self.state.page);
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                    ui::sidebar::device_footer(ui, &mut self.state);
+                    ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+                        ui::sidebar::show(ui, &mut self.state.page);
+                    });
+                });
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {

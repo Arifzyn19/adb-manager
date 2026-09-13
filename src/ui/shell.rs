@@ -1,11 +1,9 @@
-//! Interactive ADB Shell page (Phase 9).
-//!
-//! Persistent per-device session owned by `app.rs`; this module renders the
-//! transcript and returns send/stop intents. Commands run as the device's
-//! shell user — the page says so.
+//! Interactive ADB Shell page: dark terminal panel, distinct command
+//! input, history, clear/copy/save.
 
 use crate::state::AppState;
-use crate::ui::theme::StatusColors;
+use crate::ui::components::{self, page_header};
+use crate::ui::theme::palette;
 
 #[derive(Default)]
 pub struct ShellActions {
@@ -16,126 +14,158 @@ pub struct ShellActions {
 pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> ShellActions {
     let mut actions = ShellActions::default();
 
+    page_header(
+        ui,
+        "ADB Shell",
+        "Persistent shell session on the selected device.",
+    );
+
+    let Some(device) = state.selected_device().cloned() else {
+        components::no_device_state(ui, state);
+        return actions;
+    };
+    if !device.state.is_usable() {
+        ui.label(
+            egui::RichText::new(format!(
+                "Shell unavailable while the device is '{}'.",
+                device.state.label()
+            ))
+            .color(palette::TEXT_DIM),
+        );
+        return actions;
+    }
+
     ui.horizontal(|ui| {
-        ui.heading("ADB Shell");
+        if state.shell.connected {
+            components::status_badge(ui, "Session live", palette::SUCCESS);
+        } else {
+            components::status_badge(ui, "Starting session", palette::WARNING);
+        }
+        ui.monospace(&device.serial);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Save output").clicked() {
+            if components::secondary_button(ui, "Save output").clicked() {
                 save_transcript(state);
             }
-            if ui.button("Copy all").clicked() {
+            if components::secondary_button(ui, "Copy all").clicked() {
                 ctx.copy_text(transcript_text(state));
             }
-            if ui.button("Clear").clicked() {
+            if components::secondary_button(ui, "Clear").clicked() {
                 state.shell.blocks.clear();
                 state.shell.notice = None;
             }
         });
     });
-
-    let Some(device) = state.selected_device().cloned() else {
-        ui.add_space(6.0);
-        ui.label("No Android device connected.");
-        ui.label("Connect a device using USB or Wireless ADB.");
-        if ui.button("Connect Device").clicked() {
-            state.show_connect_dialog = true;
-        }
-        return actions;
-    };
-    if !device.state.is_usable() {
-        ui.label(format!(
-            "Shell unavailable while the device is '{}'.",
-            device.state.label()
-        ));
-        return actions;
-    }
-
-    ui.horizontal(|ui| {
-        ui.colored_label(
-            if state.shell.connected {
-                StatusColors::connected()
-            } else {
-                StatusColors::warning()
-            },
-            if state.shell.connected {
-                "● session live"
-            } else {
-                "● session starting…"
-            },
-        );
-        ui.monospace(&device.serial);
-        ui.colored_label(
-            StatusColors::muted(),
-            "Commands run as the shell user. Interactive prompts (vi, …) will hang — Stop the session instead.",
-        );
-    });
+    ui.label(
+        egui::RichText::new("Commands run as the shell user. Interactive prompts (vi, …) will hang — Stop the session instead.")
+            .small()
+            .color(palette::TEXT_FAINT),
+    );
     if let Some(err) = state.shell.error.clone() {
-        ui.colored_label(StatusColors::error(), format!("✕ {err}"));
+        components::error_panel(ui, &err, None);
     }
     if let Some(notice) = state.shell.notice.clone() {
-        ui.colored_label(StatusColors::muted(), notice);
+        ui.label(egui::RichText::new(notice).small().color(palette::TEXT_DIM));
     }
 
-    // Transcript (auto-scrolls while new blocks arrive).
-    egui::ScrollArea::vertical()
-        .stick_to_bottom(true)
-        .show(ui, |ui| {
-            if state.shell.blocks.is_empty() {
-                ui.colored_label(
-                    StatusColors::muted(),
-                    "No commands yet. Try: getprop ro.build.version.release",
-                );
-            }
-            for block in &state.shell.blocks {
-                ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(StatusColors::accent(), format!("{}:/ $", device.serial));
-                    ui.monospace(&block.cmd);
-                });
-                for line in &block.output {
-                    ui.monospace(line);
-                }
-                if block.code != 0 {
-                    ui.colored_label(
-                        StatusColors::warning(),
-                        format!("(exit code {})", block.code),
+    // Terminal transcript.
+    components::sunken_panel(ui, |ui| {
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                if state.shell.blocks.is_empty() {
+                    ui.label(
+                        egui::RichText::new(
+                            "No commands yet. Try:  getprop ro.build.version.release",
+                        )
+                        .monospace()
+                        .color(palette::TEXT_FAINT),
                     );
                 }
-            }
-            if let Some(running) = state.shell.running.clone() {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.monospace(format!("running: {running}"));
-                });
-            }
-        });
-
-    // Input row.
-    ui.horizontal(|ui| {
-        ui.label("$");
-        let resp = ui.text_edit_singleline(&mut state.shell.input);
-        // History navigation while the input owns focus.
-        if resp.has_focus() {
-            if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
-                step_history(state, true);
-            }
-            if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                step_history(state, false);
-            }
-        }
-        let cmd = state.shell.input.trim().to_string();
-        let can_send = !cmd.is_empty() && state.shell.running.is_none();
-        let send = ui
-            .add_enabled(can_send, egui::Button::new("Send"))
-            .clicked()
-            || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && can_send);
-        if send {
-            state.shell.input.clear();
-            state.shell.hist_idx = None;
-            actions.send = Some(cmd);
-        }
-        if state.shell.running.is_some() && ui.button("Stop").clicked() {
-            actions.stop = true;
-        }
+                for block in &state.shell.blocks {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!("{}:/ $", device.serial))
+                                .monospace()
+                                .color(palette::ACCENT_BRIGHT)
+                                .strong(),
+                        );
+                        ui.label(egui::RichText::new(&block.cmd).monospace().strong());
+                    });
+                    for line in &block.output {
+                        ui.monospace(line);
+                    }
+                    if block.code != 0 {
+                        ui.label(
+                            egui::RichText::new(format!("↵ exit code {}", block.code))
+                                .monospace()
+                                .small()
+                                .color(palette::WARNING),
+                        );
+                    }
+                }
+                if let Some(running) = state.shell.running.clone() {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.monospace(format!("running: {running}"));
+                    });
+                }
+            });
     });
+
+    // Distinct command input.
+    ui.add_space(4.0);
+    egui::Frame::new()
+        .fill(palette::PANEL)
+        .stroke(egui::Stroke::new(1.0, palette::ACCENT))
+        .corner_radius(4.0.into())
+        .inner_margin(egui::Margin {
+            left: 8,
+            right: 8,
+            top: 5,
+            bottom: 5,
+        })
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("$")
+                        .monospace()
+                        .strong()
+                        .color(palette::ACCENT_BRIGHT),
+                );
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut state.shell.input)
+                        .hint_text("Type a shell command, Enter to send…")
+                        .desired_width(f32::INFINITY)
+                        .frame(false),
+                );
+                // History navigation while the input owns focus.
+                if resp.has_focus() {
+                    if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                        step_history(state, true);
+                    }
+                    if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                        step_history(state, false);
+                    }
+                }
+                let cmd = state.shell.input.trim().to_string();
+                let can_send = !cmd.is_empty() && state.shell.running.is_none();
+                let send = ui
+                    .add_enabled(can_send, egui::Button::new("Send"))
+                    .clicked()
+                    || (resp.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        && can_send);
+                if send {
+                    state.shell.input.clear();
+                    state.shell.hist_idx = None;
+                    actions.send = Some(cmd);
+                }
+                if state.shell.running.is_some() && components::danger_button(ui, "Stop").clicked()
+                {
+                    actions.stop = true;
+                }
+            });
+        });
 
     actions
 }

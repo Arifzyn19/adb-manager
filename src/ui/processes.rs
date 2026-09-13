@@ -1,9 +1,10 @@
-//! Process Manager page (Phase 6): sortable/searchable process table with
-//! refresh, force-stop/kill actions and clipboard helpers.
+//! Process Manager page: sortable/searchable table with state column,
+//! context menu, refresh controls and kill/force-stop actions.
 
 use crate::processes::{ProcessInfo, SortColumn};
 use crate::state::AppState;
-use crate::ui::theme::{mono, StatusColors};
+use crate::ui::components::{self, page_header};
+use crate::ui::theme::{mono, palette};
 
 pub enum ProcAction {
     ForceStop(String),
@@ -19,39 +20,41 @@ pub struct ProcActions {
 pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> ProcActions {
     let mut actions = ProcActions::default();
 
-    ui.horizontal(|ui| {
-        ui.heading("Processes");
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Refresh").clicked() {
-                actions.refresh_requested = true;
-            }
-            ui.checkbox(&mut state.proc_view.auto_refresh, "Auto refresh");
-        });
-    });
+    page_header(
+        ui,
+        "Processes",
+        "Live process snapshots — approximate, not exact.",
+    );
 
     let Some(device) = state.selected_device().cloned() else {
-        ui.add_space(6.0);
-        ui.label("No Android device connected.");
-        ui.label("Connect a device using USB or Wireless ADB.");
-        if ui.button("Connect Device").clicked() {
-            state.show_connect_dialog = true;
-        }
+        components::no_device_state(ui, state);
         return actions;
     };
     if !device.state.is_usable() {
-        ui.label(format!(
-            "Process list unavailable while the device is '{}'.",
-            device.state.label()
-        ));
+        ui.label(
+            egui::RichText::new(format!(
+                "Process list unavailable while the device is '{}'.",
+                device.state.label()
+            ))
+            .color(palette::TEXT_DIM),
+        );
         return actions;
     }
     let serial = device.serial.clone();
 
     ui.horizontal(|ui| {
-        ui.label("Search");
-        ui.text_edit_singleline(&mut state.proc_view.search);
+        if components::secondary_button(ui, "Refresh").clicked() {
+            actions.refresh_requested = true;
+        }
+        ui.checkbox(&mut state.proc_view.auto_refresh, "Auto refresh (5s)");
     });
-    ui.label("CPU and memory are live snapshots — approximate, not exact.");
+
+    components::search_field(
+        ui,
+        &mut state.proc_view.search,
+        "Search process, package or PID…",
+    );
+    ui.add_space(4.0);
 
     let loading = state.processes.get(&serial).is_some_and(|c| c.loading);
     if loading
@@ -60,16 +63,99 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Pro
             .get(&serial)
             .is_none_or(|c| c.procs.is_empty())
     {
-        ui.add_space(8.0);
-        ui.label("Reading process list… (ps)");
+        components::loading_state(
+            ui,
+            "Reading process list",
+            "ps -A plus top CPU snapshot…",
+            None,
+        );
         return actions;
     }
 
+    let rows = filtered_rows(state, &serial);
+    if rows.is_empty() {
+        ui.label(
+            egui::RichText::new("No processes match the current search.").color(palette::TEXT_DIM),
+        );
+        return actions;
+    }
+
+    ui.label(
+        egui::RichText::new(format!("{} processes", rows.len()))
+            .small()
+            .color(palette::TEXT_DIM),
+    );
+    components::table_header(
+        ui,
+        &[
+            ("PID", 64.0),
+            ("Process", 210.0),
+            ("Package", 200.0),
+            ("CPU", 60.0),
+            ("Memory", 80.0),
+            ("State", 90.0),
+        ],
+    );
+
+    // Clickable sort bar (mirrors the column order above).
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("Sort:")
+                .small()
+                .color(palette::TEXT_FAINT),
+        );
+        for col in [
+            SortColumn::Pid,
+            SortColumn::Name,
+            SortColumn::Cpu,
+            SortColumn::Memory,
+        ] {
+            let active = state.proc_view.sort == col;
+            let arrow = if active {
+                if state.proc_view.ascending {
+                    " ▲"
+                } else {
+                    " ▼"
+                }
+            } else {
+                ""
+            };
+            if ui
+                .selectable_label(active, format!("{}{}", col.label(), arrow))
+                .clicked()
+            {
+                if active {
+                    state.proc_view.ascending = !state.proc_view.ascending;
+                } else {
+                    state.proc_view.sort = col;
+                    state.proc_view.ascending = col == SortColumn::Name;
+                }
+            }
+        }
+    });
+
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for p in &rows {
+            proc_row(ctx, ui, state, p, &mut actions);
+        }
+    });
+
+    if let Some(tag) = state.proc_view.busy.clone() {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(format!("Working… ({tag})"));
+        });
+    }
+
+    actions
+}
+
+fn filtered_rows(state: &AppState, serial: &str) -> Vec<ProcessInfo> {
     let query = state.proc_view.search.to_lowercase();
     let (sort, ascending) = (state.proc_view.sort, state.proc_view.ascending);
     let mut rows: Vec<ProcessInfo> = state
         .processes
-        .get(&serial)
+        .get(serial)
         .map(|c| c.procs.clone())
         .unwrap_or_default()
         .into_iter()
@@ -96,65 +182,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Pro
             ord.reverse()
         }
     });
-
-    if rows.is_empty() {
-        ui.add_space(8.0);
-        ui.label("No processes match the current search.");
-        return actions;
-    }
-
-    ui.label(format!("{} processes", rows.len()));
-
-    // Header with sort controls.
-    ui.horizontal(|ui| {
-        sort_header(ui, state, SortColumn::Pid, 70.0);
-        sort_header(ui, state, SortColumn::Name, 220.0);
-        ui.label("Package");
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label("Actions");
-            sort_header(ui, state, SortColumn::Memory, 80.0);
-            sort_header(ui, state, SortColumn::Cpu, 70.0);
-        });
-    });
-    ui.separator();
-
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        for p in &rows {
-            proc_row(ctx, ui, state, p, &mut actions);
-        }
-    });
-
-    if let Some(tag) = state.proc_view.busy.clone() {
-        ui.separator();
-        ui.label(format!("Working… ({tag})"));
-    }
-
-    actions
-}
-
-fn sort_header(ui: &mut egui::Ui, state: &mut AppState, col: SortColumn, width: f32) {
-    let active = state.proc_view.sort == col;
-    let arrow = if active {
-        if state.proc_view.ascending {
-            " ▲"
-        } else {
-            " ▼"
-        }
-    } else {
-        ""
-    };
-    let label = format!("{}{}", col.label(), arrow);
-    if ui
-        .add_sized([width, 20.0], egui::Button::new(label))
-        .clicked()
-    {
-        if active {
-            state.proc_view.ascending = !state.proc_view.ascending;
-        } else {
-            state.proc_view.sort = col;
-            state.proc_view.ascending = col == SortColumn::Name;
-        }
-    }
+    rows
 }
 
 fn proc_row(
@@ -169,44 +197,69 @@ fn proc_row(
         if busy {
             ui.disable();
         }
-        ui.add_sized([70.0, 18.0], egui::Label::new(mono(p.pid.to_string())));
-        ui.add_sized(
-            [220.0, 18.0],
+        ui.add_sized([64.0, 18.0], egui::Label::new(mono(p.pid.to_string())));
+        let name_resp = ui.add_sized(
+            [210.0, 18.0],
             egui::Label::new(mono(p.name.clone())).truncate(),
         );
         match p.package_guess() {
             Some(pkg) => {
-                ui.monospace(pkg);
+                ui.add_sized([200.0, 18.0], egui::Label::new(mono(pkg)).truncate());
             }
             None => {
-                ui.colored_label(StatusColors::muted(), "—");
+                ui.add_sized(
+                    [200.0, 18.0],
+                    egui::Label::new(egui::RichText::new("—").color(palette::TEXT_FAINT)),
+                );
             }
         }
+        ui.add_sized([60.0, 18.0], egui::Label::new(mono(p.cpu_display())));
+        ui.add_sized([80.0, 18.0], egui::Label::new(mono(p.rss_display())));
+        ui.add_sized(
+            [90.0, 18.0],
+            egui::Label::new(
+                egui::RichText::new("Running")
+                    .small()
+                    .color(palette::SUCCESS),
+            ),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("⧉ PKG").clicked() {
-                if let Some(pkg) = p.package_guess() {
-                    ctx.copy_text(pkg.to_string());
-                }
-            }
-            if ui.small_button("⧉ PID").clicked() {
-                ctx.copy_text(p.pid.to_string());
-            }
-            if ui.small_button("Kill").clicked() {
+            if components::secondary_button(ui, "Kill").clicked() {
                 actions.action_requested = Some(ProcAction::Kill(p.pid));
             }
             match p.package_guess() {
                 Some(pkg) => {
-                    if ui.small_button("Stop").clicked() {
+                    if components::secondary_button(ui, "Stop").clicked() {
                         actions.action_requested = Some(ProcAction::ForceStop(pkg.to_string()));
                     }
                 }
                 None => {
-                    let resp = ui.add_enabled(false, egui::Button::new("Stop"));
-                    resp.on_hover_text("Only app processes can be force-stopped.");
+                    ui.add_enabled(false, egui::Button::new("Stop"))
+                        .on_hover_text("Only app processes can be force-stopped.");
                 }
             }
-            ui.monospace(p.rss_display());
-            ui.monospace(p.cpu_display());
+        });
+
+        // Right-click context menu mirrors the buttons + clipboard helpers.
+        name_resp.context_menu(|ui| {
+            if ui.button("Copy PID").clicked() {
+                ctx.copy_text(p.pid.to_string());
+                ui.close();
+            }
+            if let Some(pkg) = p.package_guess() {
+                if ui.button("Copy package").clicked() {
+                    ctx.copy_text(pkg.to_string());
+                    ui.close();
+                }
+                if ui.button("Force stop package").clicked() {
+                    actions.action_requested = Some(ProcAction::ForceStop(pkg.to_string()));
+                    ui.close();
+                }
+            }
+            if ui.button("Kill process").clicked() {
+                actions.action_requested = Some(ProcAction::Kill(p.pid));
+                ui.close();
+            }
         });
     });
 }

@@ -1,5 +1,6 @@
 pub mod apk;
 pub mod apps;
+pub mod components;
 pub mod dashboard;
 pub mod devices;
 pub mod dialogs;

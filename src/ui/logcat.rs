@@ -1,35 +1,29 @@
-//! Realtime Logcat viewer (Phase 5): toolbar, virtualized list, export,
-//! crash banner + crash analyzer.
+//! Realtime Logcat viewer: toolbar, crash banner + analyzer, dark
+//! level-coded virtualized list, footer stats.
 
 use crate::logcat::{entry_matches, CrashReport, LogLevel};
 use crate::state::{AppState, LogcatBufferState};
-use crate::ui::theme::StatusColors;
+use crate::ui::components::{self, page_header};
+use crate::ui::theme::palette;
 
 /// Max rows rendered per frame; the buffer itself holds up to 10k+.
 const MAX_RENDER_ROWS: usize = 1500;
 
 pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) {
-    ui.horizontal(|ui| {
-        ui.heading("Logcat");
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            stream_status(ui, state);
-        });
-    });
+    page_header(ui, "Logcat", "Realtime device logs with crash detection.");
 
     let Some(device) = state.selected_device().cloned() else {
-        ui.add_space(6.0);
-        ui.label("No Android device connected.");
-        ui.label("Connect a device using USB or Wireless ADB.");
-        if ui.button("Connect Device").clicked() {
-            state.show_connect_dialog = true;
-        }
+        components::no_device_state(ui, state);
         return;
     };
     if !device.state.is_usable() {
-        ui.label(format!(
-            "Logcat unavailable while the device is '{}'.",
-            device.state.label()
-        ));
+        ui.label(
+            egui::RichText::new(format!(
+                "Logcat unavailable while the device is '{}'.",
+                device.state.label()
+            ))
+            .color(palette::TEXT_DIM),
+        );
         return;
     }
     let serial = device.serial.clone();
@@ -41,6 +35,32 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) {
         .entry(serial.clone())
         .or_insert_with(|| LogcatBufferState::new(capacity));
 
+    ui.horizontal(|ui| {
+        stream_status(ui, state);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let paused = state.logcat.get(&serial).is_some_and(|b| b.paused);
+            if components::secondary_button(ui, if paused { "▶ Resume" } else { "❚❚ Pause" })
+                .clicked()
+            {
+                if let Some(buf) = state.logcat.get_mut(&serial) {
+                    buf.paused = !buf.paused;
+                    if !buf.paused {
+                        buf.skipped_while_paused = 0;
+                    }
+                }
+            }
+            if components::secondary_button(ui, "Clear").clicked() {
+                if let Some(buf) = state.logcat.get_mut(&serial) {
+                    buf.buffer.clear();
+                    buf.skipped_while_paused = 0;
+                }
+            }
+            if components::secondary_button(ui, "Export…").clicked() {
+                export_logs(state, &serial);
+            }
+        });
+    });
+
     toolbar(ui, state, &serial);
     crashes_section(ctx, ui, state, &serial);
     log_list(ui, state, &serial);
@@ -49,59 +69,56 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) {
 
 fn stream_status(ui: &mut egui::Ui, state: &AppState) {
     let Some(serial) = state.selected_serial.clone() else {
-        ui.label("○ No device");
+        components::status_badge(ui, "No device", palette::TEXT_FAINT);
         return;
     };
     match state.logcat.get(&serial) {
         Some(buf) if buf.paused => {
-            ui.colored_label(StatusColors::warning(), "❚❚ Paused");
+            components::status_badge(ui, "Paused", palette::WARNING);
         }
         Some(_) => {
-            ui.colored_label(StatusColors::connected(), "● Streaming");
+            components::status_badge(ui, "Streaming", palette::SUCCESS);
         }
         None => {
-            ui.colored_label(StatusColors::muted(), "… Starting");
+            components::status_badge(ui, "Starting", palette::TEXT_FAINT);
         }
     }
 }
 
 fn toolbar(ui: &mut egui::Ui, state: &mut AppState, serial: &str) {
     ui.horizontal_wrapped(|ui| {
-        ui.label("Search");
+        ui.label(
+            egui::RichText::new("Search")
+                .small()
+                .color(palette::TEXT_DIM),
+        );
         if let Some(buf) = state.logcat.get_mut(serial) {
-            ui.text_edit_singleline(&mut buf.filter.search);
+            ui.add(
+                egui::TextEdit::singleline(&mut buf.filter.search)
+                    .hint_text("tag, pid or message…")
+                    .desired_width(200.0),
+            );
         }
-        ui.label("Level");
+        ui.label(
+            egui::RichText::new("Level")
+                .small()
+                .color(palette::TEXT_DIM),
+        );
         level_combo(ui, state, serial);
-        ui.label("Package");
+        ui.label(
+            egui::RichText::new("Package")
+                .small()
+                .color(palette::TEXT_DIM),
+        );
         package_combo(ui, state, serial);
         if let Some(buf) = state.logcat.get_mut(serial) {
-            ui.text_edit_singleline(&mut buf.filter.package);
+            ui.add(
+                egui::TextEdit::singleline(&mut buf.filter.package)
+                    .hint_text("com.example.app")
+                    .desired_width(180.0),
+            );
         }
-    });
-    ui.horizontal_wrapped(|ui| {
-        let paused = state.logcat.get(serial).is_some_and(|b| b.paused);
-        if ui
-            .button(if paused { "▶ Resume" } else { "❚❚ Pause" })
-            .clicked()
-        {
-            if let Some(buf) = state.logcat.get_mut(serial) {
-                buf.paused = !buf.paused;
-                if !buf.paused {
-                    buf.skipped_while_paused = 0;
-                }
-            }
-        }
-        if ui.button("Clear").clicked() {
-            if let Some(buf) = state.logcat.get_mut(serial) {
-                buf.buffer.clear();
-                buf.skipped_while_paused = 0;
-            }
-        }
-        if ui.button("Export…").clicked() {
-            export_logs(state, serial);
-        }
-        if ui.button("Clear filters").clicked() {
+        if components::secondary_button(ui, "Clear filters").clicked() {
             if let Some(buf) = state.logcat.get_mut(serial) {
                 buf.filter = crate::logcat::LogViewFilter::default();
             }
@@ -168,6 +185,7 @@ fn package_combo(ui: &mut egui::Ui, state: &mut AppState, serial: &str) {
     };
     egui::ComboBox::from_id_salt("logcat-package")
         .selected_text(label)
+        .width(200.0)
         .show_ui(ui, |ui| {
             for pkg in &packages {
                 let name = if pkg.is_empty() { "All packages" } else { pkg };
@@ -225,8 +243,8 @@ fn crashes_section(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState,
     }
     ui.separator();
     ui.horizontal(|ui| {
-        ui.colored_label(StatusColors::error(), "⚠");
-        ui.strong(format!("Crashes ({})", crashes.len()));
+        ui.colored_label(palette::ERROR, "⚠");
+        ui.label(egui::RichText::new(format!("Crashes ({})", crashes.len())).strong());
     });
     egui::ScrollArea::horizontal().show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -263,102 +281,109 @@ fn crash_detail(
     serial: &str,
     report: &CrashReport,
 ) {
-    egui::Frame::group(ui.style())
-        .inner_margin(8.0)
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.strong(format!(
+    components::panel(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.colored_label(palette::ERROR, "⚠");
+            ui.label(
+                egui::RichText::new(format!(
                     "{} — {}",
                     report.reason.label(),
                     report.short_exception()
-                ));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Close").clicked() {
-                        if let Some(buf) = state.logcat.get_mut(serial) {
-                            buf.selected_crash = None;
-                        }
+                ))
+                .strong(),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if components::secondary_button(ui, "Close").clicked() {
+                    if let Some(buf) = state.logcat.get_mut(serial) {
+                        buf.selected_crash = None;
                     }
-                });
-            });
-            egui::Grid::new(format!("crash-{}", report.id))
-                .num_columns(2)
-                .spacing([12.0, 3.0])
-                .striped(true)
-                .show(ui, |ui| {
-                    for (k, v) in [
-                        ("Application", report.package.as_str()),
-                        ("Process", report.process.as_str()),
-                        ("Exception", report.exception.as_str()),
-                        (
-                            "Thread",
-                            if report.thread.is_empty() {
-                                "—"
-                            } else {
-                                &report.thread
-                            },
-                        ),
-                        (
-                            "Timestamp",
-                            if report.timestamp.is_empty() {
-                                "—"
-                            } else {
-                                &report.timestamp
-                            },
-                        ),
-                    ] {
-                        ui.label(k);
-                        ui.monospace(v);
-                        ui.end_row();
-                    }
-                });
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                if let Some(buf) = state.logcat.get_mut(serial) {
-                    ui.checkbox(&mut buf.hide_system_frames, "Filter system frames");
                 }
-                if ui.button("Copy stacktrace").clicked() {
+            });
+        });
+        components::kv_grid(
+            ui,
+            &format!("crash-{}", report.id),
+            &[
+                ("Application", report.package.as_str()),
+                ("Process", report.process.as_str()),
+                ("Exception", report.exception.as_str()),
+                (
+                    "Thread",
+                    if report.thread.is_empty() {
+                        "—"
+                    } else {
+                        &report.thread
+                    },
+                ),
+                (
+                    "Timestamp",
+                    if report.timestamp.is_empty() {
+                        "—"
+                    } else {
+                        &report.timestamp
+                    },
+                ),
+            ],
+        );
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            if let Some(buf) = state.logcat.get_mut(serial) {
+                ui.checkbox(&mut buf.hide_system_frames, "Filter system frames");
+            }
+            if components::secondary_button(ui, "Copy stacktrace").clicked() {
+                let hide = state
+                    .logcat
+                    .get(serial)
+                    .is_some_and(|b| b.hide_system_frames);
+                ctx.copy_text(report.to_text(hide));
+            }
+            if components::secondary_button(ui, "Export…").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .set_file_name(format!("crash_{}.txt", report.package))
+                    .set_title("Export crash report")
+                    .save_file()
+                {
                     let hide = state
                         .logcat
                         .get(serial)
                         .is_some_and(|b| b.hide_system_frames);
-                    ctx.copy_text(report.to_text(hide));
-                }
-                if ui.button("Export…").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .set_file_name(format!("crash_{}.txt", report.package))
-                        .set_title("Export crash report")
-                        .save_file()
-                    {
-                        let hide = state
-                            .logcat
-                            .get(serial)
-                            .is_some_and(|b| b.hide_system_frames);
-                        if let Err(e) = std::fs::write(&path, report.to_text(hide)) {
-                            ui.colored_label(StatusColors::error(), format!("Export failed: {e}"));
-                        }
+                    if let Err(e) = std::fs::write(&path, report.to_text(hide)) {
+                        ui.colored_label(palette::ERROR, format!("Export failed: {e}"));
                     }
                 }
-            });
-            let hide = state
-                .logcat
-                .get(serial)
-                .is_some_and(|b| b.hide_system_frames);
-            let stack = report.visible_stack(hide);
-            ui.label(format!("Stack trace ({} shown):", stack.len()));
-            egui::ScrollArea::vertical()
-                .max_height(260.0)
-                .show(ui, |ui| {
+            }
+        });
+        let hide = state
+            .logcat
+            .get(serial)
+            .is_some_and(|b| b.hide_system_frames);
+        let stack = report.visible_stack(hide);
+        ui.label(
+            egui::RichText::new(format!("Stack trace ({} shown):", stack.len()))
+                .small()
+                .color(palette::TEXT_DIM),
+        );
+        egui::ScrollArea::vertical()
+            .max_height(260.0)
+            .show(ui, |ui| {
+                components::sunken_panel(ui, |ui| {
                     for line in &stack {
                         let is_app = !crate::logcat::system_frame(line)
                             && line.trim_start().starts_with("at ");
                         if is_app {
-                            ui.label(egui::RichText::new(*line).monospace().strong());
+                            ui.label(
+                                egui::RichText::new(*line)
+                                    .monospace()
+                                    .strong()
+                                    .color(palette::ERROR),
+                            );
                         } else {
                             ui.monospace(*line);
                         }
                     }
                 });
-        });
+            });
+    });
 }
 
 // --- Log list --------------------------------------------------------------
@@ -366,14 +391,22 @@ fn crash_detail(
 fn log_list(ui: &mut egui::Ui, state: &mut AppState, serial: &str) {
     ui.separator();
     let Some(buf) = state.logcat.get(serial) else {
-        ui.label("Waiting for Logcat… (starting adb logcat)");
+        components::loading_state(
+            ui,
+            "Starting Logcat",
+            "Spawning adb logcat on the device…",
+            None,
+        );
         return;
     };
     if buf.buffer.entries.is_empty() {
         if buf.paused {
-            ui.label("Paused. Resume to keep receiving lines.");
+            ui.label(
+                egui::RichText::new("Paused. Resume to keep receiving lines.")
+                    .color(palette::TEXT_DIM),
+            );
         } else {
-            ui.label("Waiting for Logcat… (no lines yet)");
+            components::loading_state(ui, "Waiting for Logcat", "No lines received yet…", None);
         }
         return;
     }
@@ -387,7 +420,9 @@ fn log_list(ui: &mut egui::Ui, state: &mut AppState, serial: &str) {
         .collect();
 
     if filtered.is_empty() {
-        ui.label("No lines match the current filters.");
+        ui.label(
+            egui::RichText::new("No lines match the current filters.").color(palette::TEXT_DIM),
+        );
         return;
     }
 
@@ -399,10 +434,14 @@ fn log_list(ui: &mut egui::Ui, state: &mut AppState, serial: &str) {
         .stick_to_bottom(autoscroll)
         .show(ui, |ui| {
             if truncated {
-                ui.label(format!(
-                    "… showing newest {MAX_RENDER_ROWS} of {} matching lines",
-                    filtered.len()
-                ));
+                ui.label(
+                    egui::RichText::new(format!(
+                        "… showing newest {MAX_RENDER_ROWS} of {} matching lines",
+                        filtered.len()
+                    ))
+                    .small()
+                    .color(palette::TEXT_FAINT),
+                );
             }
             for entry in &filtered[start..] {
                 log_row(ui, entry);
@@ -412,23 +451,49 @@ fn log_list(ui: &mut egui::Ui, state: &mut AppState, serial: &str) {
 
 fn log_row(ui: &mut egui::Ui, entry: &crate::logcat::LogEntry) {
     if !entry.parsed {
-        ui.colored_label(StatusColors::muted(), &entry.raw);
+        ui.label(
+            egui::RichText::new(&entry.raw)
+                .monospace()
+                .color(palette::TEXT_FAINT),
+        );
         return;
     }
-    let color = match entry.level {
-        LogLevel::Verbose => StatusColors::muted(),
-        LogLevel::Debug => StatusColors::accent(),
-        LogLevel::Info => StatusColors::connected(),
-        LogLevel::Warning => StatusColors::warning(),
-        LogLevel::Error | LogLevel::Fatal => StatusColors::error(),
-        LogLevel::Unknown => StatusColors::muted(),
+    let (badge, color, bold) = match entry.level {
+        LogLevel::Verbose => ("V", palette::LOG_VERBOSE, false),
+        LogLevel::Debug => ("D", palette::LOG_DEBUG, false),
+        LogLevel::Info => ("I", palette::LOG_INFO, false),
+        LogLevel::Warning => ("W", palette::LOG_WARN, false),
+        LogLevel::Error => ("E", palette::LOG_ERROR, true),
+        LogLevel::Fatal => ("F", palette::LOG_ERROR, true),
+        LogLevel::Unknown => ("?", palette::TEXT_FAINT, false),
     };
     ui.horizontal(|ui| {
-        ui.colored_label(color, entry.level.label());
-        ui.monospace(format!(
-            "{} {:>5} {}: {}",
-            entry.timestamp, entry.pid, entry.tag, entry.message
-        ));
+        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.label(
+            egui::RichText::new(entry.timestamp.clone())
+                .monospace()
+                .small()
+                .color(palette::TEXT_FAINT),
+        );
+        let level = egui::RichText::new(badge).monospace().strong().color(color);
+        ui.add_sized([14.0, 16.0], egui::Label::new(level));
+        ui.label(
+            egui::RichText::new(format!("{:>5}", entry.pid))
+                .monospace()
+                .small()
+                .color(palette::TEXT_DIM),
+        );
+        ui.label(
+            egui::RichText::new(entry.tag.clone())
+                .monospace()
+                .color(palette::ACCENT_BRIGHT),
+        );
+        let msg = egui::RichText::new(entry.message.clone()).monospace();
+        ui.label(if bold {
+            msg.strong().color(color)
+        } else {
+            msg.color(palette::TEXT)
+        });
     });
 }
 
@@ -455,6 +520,6 @@ fn footer(ui: &mut egui::Ui, state: &AppState, serial: &str) {
         if let Some(notice) = buf.notice.clone() {
             text.push_str(&format!(" • {notice}"));
         }
-        ui.label(text);
+        ui.label(egui::RichText::new(text).small().color(palette::TEXT_FAINT));
     }
 }

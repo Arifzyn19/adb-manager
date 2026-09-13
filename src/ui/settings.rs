@@ -1,8 +1,11 @@
-//! ADB Environment / Settings page (Phase 1: ADB + device prefs).
+//! Settings page: ADB environment, device prefs, behavior, per-feature
+//! tuning, diagnostics — all in bordered sections.
 
 use crate::adb::{candidate_adb_paths, detect_adb, AdbClient};
 use crate::events::{AppEvent, Toast};
 use crate::state::AppState;
+use crate::ui::components::{self, page_header};
+use crate::ui::theme::palette;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
@@ -17,39 +20,42 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
         config_changed: false,
     };
 
-    ui.heading("Settings");
-    ui.add_space(6.0);
+    page_header(ui, "Settings", "Environment, behavior and tuning.");
 
     // ---- ADB section ----
-    ui.strong("ADB Environment");
-    ui.add_space(2.0);
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "ADB ENVIRONMENT");
+    components::panel(ui, |ui| {
+        let (dot, status) = match state.adb_status {
+            crate::state::AdbStatus::Ready => (palette::SUCCESS, "Ready"),
+            crate::state::AdbStatus::Unavailable => (palette::WARNING, "Unavailable"),
+            crate::state::AdbStatus::Unknown => (palette::TEXT_FAINT, "Detecting"),
+        };
         ui.horizontal(|ui| {
-            ui.label("ADB Status");
-            ui.label(match state.adb_status {
-                crate::state::AdbStatus::Ready => "✓ Ready",
-                crate::state::AdbStatus::Unavailable => "✕ Unavailable",
-                crate::state::AdbStatus::Unknown => "… Detecting",
-            });
+            ui.colored_label(dot, "●");
+            ui.label(egui::RichText::new(format!("ADB Status — {status}")).strong());
         });
-        ui.horizontal(|ui| {
-            ui.label("ADB Version");
-            ui.monospace(state.adb_version.clone().unwrap_or_else(|| "—".to_string()));
-        });
-        ui.horizontal(|ui| {
-            ui.label("ADB Path");
-            ui.monospace(
-                state
-                    .config
-                    .adb_path
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "not configured".to_string()),
-            );
-        });
+        components::kv_grid(
+            ui,
+            "settings-adb",
+            &[
+                (
+                    "Version",
+                    &state.adb_version.clone().unwrap_or_else(|| "—".to_string()),
+                ),
+                (
+                    "Path",
+                    &state
+                        .config
+                        .adb_path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "not configured".to_string()),
+                ),
+            ],
+        );
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
-            if ui.button("Detect ADB").clicked() {
+            if components::secondary_button(ui, "Detect ADB").clicked() {
                 match detect_adb() {
                     Ok((path, version)) => {
                         state.config.adb_path = Some(path.clone());
@@ -69,7 +75,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
                     }
                 }
             }
-            if ui.button("Browse…").clicked() {
+            if components::secondary_button(ui, "Browse…").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("adb", &["exe", ""])
                     .set_title("Select adb executable")
@@ -95,7 +101,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
                     }
                 }
             }
-            if ui.button("Test ADB").clicked() {
+            if components::secondary_button(ui, "Test ADB").clicked() {
                 match state.config.adb_path.clone() {
                     Some(path) => match AdbClient::validate_path(&path) {
                         Ok(version) => {
@@ -118,18 +124,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
 
         if state.config.adb_path.is_none() {
             ui.add_space(4.0);
-            ui.label("Common locations searched:");
+            ui.label(
+                egui::RichText::new("Common locations searched:")
+                    .small()
+                    .color(palette::TEXT_DIM),
+            );
             for p in candidate_adb_paths().iter().take(6) {
                 ui.monospace(p.display().to_string());
             }
         }
     });
 
-    ui.add_space(8.0);
-
     // ---- Devices section ----
-    ui.strong("Devices");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "DEVICES");
+    components::panel(ui, |ui| {
         if ui
             .checkbox(&mut state.config.auto_refresh, "Auto refresh device list")
             .changed()
@@ -152,7 +160,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
             actions.config_changed = true;
         }
         ui.horizontal(|ui| {
-            ui.label("Refresh interval (seconds)");
+            ui.label(egui::RichText::new("Refresh interval (seconds)").color(palette::TEXT_DIM));
             let mut secs = state.config.refresh_interval_secs as i32;
             if ui
                 .add(egui::DragValue::new(&mut secs).range(1..=60).speed(1.0))
@@ -164,11 +172,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
         });
     });
 
-    ui.add_space(8.0);
-
     // ---- Behavior section ----
-    ui.strong("Behavior");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "BEHAVIOR");
+    components::panel(ui, |ui| {
         if ui
             .checkbox(
                 &mut state.config.confirm_destructive,
@@ -180,13 +186,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
         }
     });
 
-    ui.add_space(8.0);
-
     // ---- Logcat section ----
-    ui.strong("Logcat");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "LOGCAT");
+    components::panel(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Buffer size (lines)");
+            ui.label(egui::RichText::new("Buffer size (lines)").color(palette::TEXT_DIM));
             let mut size = state.config.log_buffer_size as i32;
             if ui
                 .add(
@@ -214,14 +218,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
         }
     });
 
-    ui.add_space(8.0);
-
     // ---- APK section ----
-    ui.strong("APK");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.label("Inspection is built-in (local ZIP + manifest decode). An external aapt2 is optional and only powers an extra dump helper.");
+    components::section_title(ui, "APK");
+    components::panel(ui, |ui| {
+        ui.label(
+            egui::RichText::new("Inspection is built-in (local ZIP + manifest decode). An external aapt2 is optional.")
+                .small()
+                .color(palette::TEXT_DIM),
+        );
         ui.horizontal(|ui| {
-            ui.label("aapt2 path (optional)");
+            ui.label(egui::RichText::new("aapt2 path (optional)").color(palette::TEXT_DIM));
             ui.monospace(
                 state
                     .config
@@ -232,7 +238,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
             );
         });
         ui.horizontal_wrapped(|ui| {
-            if ui.button("Browse…").clicked() {
+            if components::secondary_button(ui, "Browse…").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_title("Select aapt2 executable")
                     .pick_file()
@@ -241,20 +247,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
                     actions.config_changed = true;
                 }
             }
-            if ui.button("Clear").clicked() {
+            if components::secondary_button(ui, "Clear").clicked() {
                 state.config.aapt2_path = None;
                 actions.config_changed = true;
             }
         });
     });
 
-    ui.add_space(8.0);
-
     // ---- Files section ----
-    ui.strong("Files");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "FILES");
+    components::panel(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Browser root");
+            ui.label(egui::RichText::new("Browser root").color(palette::TEXT_DIM));
             if ui
                 .text_edit_singleline(&mut state.config.files_root)
                 .changed()
@@ -265,50 +269,66 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, events: &Sender<AppEvent>) 
                 actions.config_changed = true;
             }
         });
-        ui.colored_label(
-            egui::Color32::GRAY,
-            "Default Android storage root (used for Home + first open).",
+        ui.label(
+            egui::RichText::new("Default Android storage root (used for Home + first open).")
+                .small()
+                .color(palette::TEXT_FAINT),
         );
     });
 
-    ui.add_space(8.0);
+    // ---- Shortcuts ----
+    components::section_title(ui, "SHORTCUTS");
+    components::panel(ui, |ui| {
+        components::kv_grid(
+            ui,
+            "settings-shortcuts",
+            &[
+                ("Ctrl+K", "Command palette"),
+                ("Ctrl+Shift+L", "Logcat"),
+                ("Ctrl+Shift+A", "Apps"),
+                ("Ctrl+Shift+S", "Shell"),
+                ("Ctrl+R", "Refresh devices"),
+                ("Esc", "Close palette / dialogs"),
+            ],
+        );
+    });
 
     // ---- Diagnostics ----
-    ui.strong("Diagnostics");
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    components::section_title(ui, "DIAGNOSTICS");
+    components::panel(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label("Log directory");
+            ui.label(egui::RichText::new("Log directory").color(palette::TEXT_DIM));
             ui.monospace(crate::config::AppConfig::log_dir().display().to_string());
         });
-        if ui.button("Open log directory").clicked() {
-            let dir = crate::config::AppConfig::log_dir();
-            let _ = std::fs::create_dir_all(&dir);
-            #[cfg(windows)]
-            {
-                let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+        ui.horizontal_wrapped(|ui| {
+            if components::secondary_button(ui, "Open log directory").clicked() {
+                let dir = crate::config::AppConfig::log_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+                }
             }
-            #[cfg(not(windows))]
-            {
-                let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+            if components::secondary_button(ui, "Copy diagnostics").clicked() {
+                ui.ctx().copy_text(diagnostics_text(state));
+                let _ = events.send(AppEvent::Toast(Toast::success(
+                    "Diagnostics copied to clipboard",
+                )));
             }
-        }
-        if ui.button("Copy diagnostics").clicked() {
-            ui.ctx().copy_text(diagnostics_text(state));
-            let _ = events.send(AppEvent::Toast(Toast::success(
-                "Diagnostics copied to clipboard",
-            )));
-        }
+        });
     });
 
     if let Some(err) = state.last_error.clone() {
-        ui.add_space(8.0);
-        ui.strong(format!("Last error: {}", err.title));
-        ui.label(err.message);
-        if let Some(details) = err.details {
-            ui.collapsing("Details", |ui| {
-                ui.monospace(details);
-            });
-        }
+        ui.add_space(4.0);
+        components::error_panel(
+            ui,
+            &format!("{}: {}", err.title, err.message),
+            err.details.as_deref(),
+        );
     }
 
     actions
