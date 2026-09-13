@@ -124,7 +124,7 @@ fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActio
                             .save_file()
                         {
                             actions.op = Some(ToolOp::StartRec {
-                                secs: state.tools.rec_limit.max(1).min(180),
+                                secs: state.tools.rec_limit.clamp(1, 180),
                                 local: dest.display().to_string(),
                             });
                         }

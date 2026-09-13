@@ -54,7 +54,8 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Apk
     if !ctx.input(|i| i.raw.hovered_files.is_empty()) {
         ui.label("Drop the .apk file to inspect it.");
     }
-    for path in dropped {
+    // One file at a time by design.
+    if let Some(path) = dropped.into_iter().next() {
         if path
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("apk"))
@@ -63,7 +64,6 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Apk
         } else {
             state.apk.error = Some(format!("{} is not an .apk file.", path.display()));
         }
-        break; // one file at a time by design.
     }
 
     if state.apk.loading {

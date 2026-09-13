@@ -417,7 +417,7 @@ impl AdbClient {
     /// Raw `ls -la` snapshot (stdout + stderr + exit code) so the caller can
     /// distinguish "empty directory" from "no such directory".
     pub fn ls_raw(&self, serial: &str, remote_dir: &str) -> Result<OutputSnapshot, AdbError> {
-        Ok(self.run(&self.builder().ls_long(serial, remote_dir))?)
+        self.run(&self.builder().ls_long(serial, remote_dir))
     }
 
     /// `mkdir -p` on the device — Ok(output text).

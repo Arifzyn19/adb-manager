@@ -130,20 +130,14 @@ pub fn parse_dumpsys_battery(output: &str) -> BatteryInfo {
                     technology = Some(value.to_string());
                 }
             }
-            "AC powered" => {
-                if value == "true" {
-                    powered.push("AC".to_string());
-                }
+            "AC powered" if value == "true" => {
+                powered.push("AC".to_string());
             }
-            "USB powered" => {
-                if value == "true" {
-                    powered.push("USB".to_string());
-                }
+            "USB powered" if value == "true" => {
+                powered.push("USB".to_string());
             }
-            "Wireless powered" => {
-                if value == "true" {
-                    powered.push("Wireless".to_string());
-                }
+            "Wireless powered" if value == "true" => {
+                powered.push("Wireless".to_string());
             }
             _ => {}
         }
@@ -179,11 +173,12 @@ impl MemInfo {
     }
 
     pub fn used_pct(&self) -> Option<u8> {
-        if self.total_kb == 0 {
-            None
-        } else {
-            Some((self.used_kb() * 100 / self.total_kb).min(100) as u8)
-        }
+        let pct = self
+            .used_kb()
+            .checked_mul(100)?
+            .checked_div(self.total_kb)?
+            .min(100);
+        Some(pct as u8)
     }
 }
 

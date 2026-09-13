@@ -139,15 +139,13 @@ fn parse_pkcs7_hint(der: &[u8]) -> DnHint {
     let mut j = 0;
     while j + 2 < der.len() && times.len() < 2 {
         let (tag, len) = (der[j], der[j + 1] as usize);
-        if (tag == 0x17 && len == 13) || (tag == 0x18 && len == 15) {
-            if j + 2 + len <= der.len() {
-                let s = &der[j + 2..j + 2 + len];
-                if s.iter().all(|b| b.is_ascii_digit() || *b == b'Z') {
-                    times.push(String::from_utf8_lossy(s).into_owned());
-                }
-                j += 2 + len;
-                continue;
+        if ((tag == 0x17 && len == 13) || (tag == 0x18 && len == 15)) && j + 2 + len <= der.len() {
+            let s = &der[j + 2..j + 2 + len];
+            if s.iter().all(|b| b.is_ascii_digit() || *b == b'Z') {
+                times.push(String::from_utf8_lossy(s).into_owned());
             }
+            j += 2 + len;
+            continue;
         }
         j += 1;
     }
@@ -168,7 +166,7 @@ fn parse_pkcs7_hint(der: &[u8]) -> DnHint {
         let s = fmt(&attrs);
         (Some(s.clone()), Some(s))
     } else {
-        let mid = (attrs.len() + 1) / 2;
+        let mid = attrs.len().div_ceil(2);
         (Some(fmt(&attrs[..mid])), Some(fmt(&attrs[mid..])))
     };
     DnHint {
@@ -192,11 +190,9 @@ fn read_nearby_string(der: &[u8], from: usize) -> Option<String> {
                 let raw = &der[k + 2..k + 2 + len];
                 if tag == 0x1E {
                     // BMPString: BE UTF-16.
-                    if raw.len() % 2 == 0 {
-                        let u: Vec<u16> = raw
-                            .chunks_exact(2)
-                            .map(|c| u16::from_be_bytes([c[0], c[1]]))
-                            .collect();
+                    if raw.len().is_multiple_of(2) {
+                        let (pairs, _) = raw.as_chunks::<2>();
+                        let u: Vec<u16> = pairs.iter().map(|c| u16::from_be_bytes(*c)).collect();
                         return Some(String::from_utf16_lossy(&u));
                     }
                     return None;

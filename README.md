@@ -37,7 +37,7 @@ No Electron. No web UI. No Node.js. No Python. Just Rust.
 ## Requirements
 
 - Windows 10/11 x64 (ARM64-ready architecture)
-- Rust stable (1.80+; tested on 1.98)
+- Rust stable (1.88+; tested on 1.98)
 - Android Platform Tools (`adb.exe`) — auto-detected, or pick it in
   **Settings → ADB Environment**
 

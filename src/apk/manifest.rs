@@ -338,32 +338,24 @@ fn parse_binary(bytes: &[u8]) -> Result<ManifestData, String> {
                         }
                         out.debuggable = attrs.get("debuggable").is_some_and(|v| v == "true");
                     }
-                    "activity" | "activity-alias" => {
-                        if parent == "application" {
-                            if let Some(a) = attrs.get("name") {
-                                out.activities.push(qualify(&out.package, a));
-                            }
+                    "activity" | "activity-alias" if parent == "application" => {
+                        if let Some(a) = attrs.get("name") {
+                            out.activities.push(qualify(&out.package, a));
                         }
                     }
-                    "service" => {
-                        if parent == "application" {
-                            if let Some(a) = attrs.get("name") {
-                                out.services.push(qualify(&out.package, a));
-                            }
+                    "service" if parent == "application" => {
+                        if let Some(a) = attrs.get("name") {
+                            out.services.push(qualify(&out.package, a));
                         }
                     }
-                    "receiver" => {
-                        if parent == "application" {
-                            if let Some(a) = attrs.get("name") {
-                                out.receivers.push(qualify(&out.package, a));
-                            }
+                    "receiver" if parent == "application" => {
+                        if let Some(a) = attrs.get("name") {
+                            out.receivers.push(qualify(&out.package, a));
                         }
                     }
-                    "provider" => {
-                        if parent == "application" {
-                            if let Some(a) = attrs.get("name") {
-                                out.providers.push(qualify(&out.package, a));
-                            }
+                    "provider" if parent == "application" => {
+                        if let Some(a) = attrs.get("name") {
+                            out.providers.push(qualify(&out.package, a));
                         }
                     }
                     _ => {}
@@ -397,9 +389,7 @@ fn parse_binary(bytes: &[u8]) -> Result<ManifestData, String> {
 fn qualify(package: &str, name: &str) -> String {
     if name.starts_with('.') {
         format!("{package}{name}")
-    } else if name.contains('.') {
-        name.to_string()
-    } else if package.is_empty() {
+    } else if name.contains('.') || package.is_empty() {
         name.to_string()
     } else {
         format!("{package}.{name}")
@@ -567,7 +557,8 @@ mod tests {
 
     /// Build a minimal binary manifest: pool ["manifest","package","com.x",
     /// "versionName","1.0","uses-permission","name","android.permission.INTERNET"]
-    /// + <manifest package=com.x versionName=1.0><uses-permission …/></manifest>.
+    /// plus a manifest element with package and versionName and one
+    /// uses-permission child.
     /// String-pool indices are resolved in the test body; see below.
     fn utf16_len_prefixed(s: &str) -> Vec<u8> {
         let u: Vec<u16> = s.encode_utf16().collect();

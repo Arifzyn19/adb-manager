@@ -133,7 +133,7 @@ pub fn download_entry(
     local_dir: &str,
 ) -> Result<String, AdbError> {
     let Some(_) = normalize_dir(
-        &remote
+        remote
             .rfind('/')
             .map(|i| if i == 0 { "/" } else { &remote[..i] })
             .unwrap_or("/"),
