@@ -16,6 +16,29 @@ Spec: `PROMPT.md` (§60 Development Order).
 | 9 | Shell | ✅ Done | Persistent `adb shell` session, marker-delimited blocks, history, save/copy/clear, cancellation, 104 tests |
 | 10 | Tools | ✅ Done | Screenshot + recording, battery/memory/storage/properties, reboot, ADB maintenance, 115 tests |
 | 11 | Polish | ✅ Done | Ctrl+K palette, Ctrl+Shift shortcuts, copy-diagnostics, packaging docs, 119 tests |
+| 12 | UI redesign | ✅ Done | Centralized #0D1117 theme + component kit (buttons, badges, panels, tables, states, dialogs); all pages + chrome restyled, ADB backend untouched |
+
+## Done in UI redesign
+
+- `ui/theme`: exact palette (BG #0D1117, panel #161B22, border #273142,
+  accent #3B82F6, semantic + log-level colors), full widget-state styling
+  (hover/pressed/active/disabled), compact typography, flat chrome
+- `ui/components`: primary/secondary/danger/icon buttons, status badges,
+  pills, bordered/sunken panels, stat blocks, search fields, segmented
+  tabs, table headers, empty/loading/error states, key/value grids,
+  generic confirm modal
+- Chrome: icon sidebar with active highlight + device footer, compact
+  header with state-aware device selector, segmented status bar, tinted
+  toasts
+- Pages: dashboard (specs + live snapshots), devices (badges + saved),
+  apps (stats + table + side detail panel), processes (state column +
+  context menu), logcat (level-coded rows), APK (drop zone + 7 tabs),
+  files (breadcrumb explorer), shell (terminal panel + distinct input),
+  tools (sectioned cards), settings (sectioned + shortcuts reference),
+  connect dialog (segmented tabs + scan-area frame)
+- Backend untouched; green CI (fmt, clippy, 119 tests, release build)
+
+## Done in Phase 3
 
 ## Phase 3 scope (from PROMPT.md §10–11, §60)
 

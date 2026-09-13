@@ -10,6 +10,11 @@ No Electron. No web UI. No Node.js. No Python. Just Rust.
 > inspector/installer, file browser, interactive shell, device tools
 > (screenshot, recording, battery/memory/storage/properties, reboot) and
 > polish (command palette, shortcuts, diagnostics) are working.
+>
+> The interface is a centralized dark design system (`ui/theme` +
+> `ui/components`: #0D1117 backgrounds, accent/semantic colors, shared
+> buttons, badges, panels, tables, empty/loading/error states) applied
+> consistently across the sidebar, header, status bar and every page.
 
 ## Features (Phase 1)
 
