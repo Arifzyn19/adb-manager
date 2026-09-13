@@ -1,0 +1,16 @@
+pub mod apk;
+pub mod apps;
+pub mod dashboard;
+pub mod devices;
+pub mod dialogs;
+pub mod files;
+pub mod header;
+pub mod logcat;
+pub mod palette;
+pub mod processes;
+pub mod settings;
+pub mod shell;
+pub mod sidebar;
+pub mod status_bar;
+pub mod theme;
+pub mod tools;

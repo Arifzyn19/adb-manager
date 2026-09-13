@@ -1,0 +1,39 @@
+[package]
+name = "adb-manager"
+version = "0.1.0"
+edition = "2021"
+description = "ADB Manager — Windows desktop Android device management tool (pure Rust + egui)"
+license = "MIT"
+
+[[bin]]
+name = "adb-manager"
+path = "src/main.rs"
+
+[dependencies]
+eframe = { version = "0.32", default-features = false, features = ["default_fonts", "glow"] }
+egui = "0.32"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+thiserror = "2"
+anyhow = "1"
+rfd = "0.15"
+directories = "6"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+nokhwa = { version = "0.10", features = ["input-native", "camera-sync-impl"] }
+rqrr = "0.11"
+image = "0.25"
+
+[dev-dependencies]
+pretty_assertions = "1"
+qrcode = "0.14"
+
+[profile.release]
+opt-level = 3
+lto = false
+codegen-units = 16
+strip = true
