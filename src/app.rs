@@ -586,7 +586,7 @@ impl AdbManagerApp {
         self.ensure_shell(device.serial.clone());
         let err = match &self.shell_worker {
             Some(worker) => match worker.send(&cmd) {
-                Ok(()) => {
+                Ok(_id) => {
                     self.state.shell.running = Some(cmd);
                     return;
                 }
@@ -1387,25 +1387,22 @@ impl eframe::App for AdbManagerApp {
                             self.state.files.busy = None;
                         }
                         // Initial + post-op + manual refresh fetches.
+                        let cwd_or_root = if self.state.files.cwd.is_empty() {
+                            root.clone()
+                        } else {
+                            self.state.files.cwd.clone()
+                        };
                         let mut want: Option<String> = None;
                         if self.state.files.pending.is_none()
                             && self.state.files.entries.is_empty()
                             && !self.state.files.loading
                             && self.state.files.error.is_none()
                         {
-                            want = Some(if self.state.files.cwd.is_empty() {
-                                root
-                            } else {
-                                self.state.files.cwd.clone()
-                            });
+                            want = Some(cwd_or_root.clone());
                         }
                         if self.state.files.refresh_list {
                             self.state.files.refresh_list = false;
-                            want = Some(if self.state.files.cwd.is_empty() {
-                                root
-                            } else {
-                                self.state.files.cwd.clone()
-                            });
+                            want = Some(cwd_or_root);
                         }
                         if device.state.is_usable() {
                             if let Some(dir) = want {
