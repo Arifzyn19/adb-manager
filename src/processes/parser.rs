@@ -117,9 +117,9 @@ mod tests {
 
     const PS_SAMPLE: &str =
         "USER           PID  PPID     VSZ    RSS WCHAN            ADDR S NAME\n\
-        root             1      0   15000   2400                0 S init\n\
-        u0_a152      12345    678 8000000 185344                0 S com.example.app\n\
-        u0_a152      12346  12345 8000000  95344                0 S com.example.app:service\n";
+        root             1      0   15000   2400 -                0 S init\n\
+        u0_a152      12345    678 8000000 185344 -                0 S com.example.app\n\
+        u0_a152      12346  12345 8000000  95344 -                0 S com.example.app:service\n";
 
     #[test]
     fn parses_ps_table() {
