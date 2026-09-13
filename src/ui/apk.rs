@@ -16,6 +16,7 @@ pub struct InstallRequest {
     pub reinstall: bool,
 }
 
+#[derive(Default)]
 pub struct ApkActions {
     pub inspect_path: Option<PathBuf>,
     pub install: Option<InstallRequest>,

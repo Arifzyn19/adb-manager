@@ -24,14 +24,14 @@ pub mod palette {
     pub const ACCENT: Color32 = Color32::from_rgb(0x3B, 0x82, 0xF6);
     pub const ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x60, 0xA5, 0xFA);
     pub const ACCENT_DEEP: Color32 = Color32::from_rgb(0x1D, 0x4E, 0xD8);
-    pub const ACCENT_TINT: Color32 = Color32::from_rgba_unmultiplied(0x3B, 0x82, 0xF6, 26);
+    pub const ACCENT_TINT: Color32 = Color32::from_rgba_premultiplied(0x3B, 0x82, 0xF6, 26);
 
     pub const SUCCESS: Color32 = Color32::from_rgb(0x22, 0xC5, 0x5E);
-    pub const SUCCESS_TINT: Color32 = Color32::from_rgba_unmultiplied(0x22, 0xC5, 0x5E, 26);
+    pub const SUCCESS_TINT: Color32 = Color32::from_rgba_premultiplied(0x22, 0xC5, 0x5E, 26);
     pub const WARNING: Color32 = Color32::from_rgb(0xF5, 0x9E, 0x0B);
-    pub const WARNING_TINT: Color32 = Color32::from_rgba_unmultiplied(0xF5, 0x9E, 0x0B, 26);
+    pub const WARNING_TINT: Color32 = Color32::from_rgba_premultiplied(0xF5, 0x9E, 0x0B, 26);
     pub const ERROR: Color32 = Color32::from_rgb(0xEF, 0x44, 0x44);
-    pub const ERROR_TINT: Color32 = Color32::from_rgba_unmultiplied(0xEF, 0x44, 0x44, 28);
+    pub const ERROR_TINT: Color32 = Color32::from_rgba_premultiplied(0xEF, 0x44, 0x44, 28);
     pub const ERROR_DEEP: Color32 = Color32::from_rgb(0x2A, 0x12, 0x15);
 
     // Log-level semantics (viewer only).
@@ -76,7 +76,7 @@ pub fn apply_theme(ctx: &egui::Context) {
     visuals.window_shadow = egui::Shadow::NONE;
     visuals.popup_shadow = egui::Shadow::NONE;
 
-    visuals.selection = egui::Selection {
+    visuals.selection = egui::style::Selection {
         bg_fill: ACCENT,
         stroke: egui::Stroke::new(1.0, TEXT),
     };
@@ -86,7 +86,7 @@ pub fn apply_theme(ctx: &egui::Context) {
     visuals.disabled_alpha = 0.45;
 
     // Text cursor matches the accent.
-    visuals.text_cursor = egui::TextCursorStyle {
+    visuals.text_cursor = egui::style::TextCursorStyle {
         stroke: egui::Stroke::new(2.0, ACCENT_BRIGHT),
         ..Default::default()
     };
@@ -135,8 +135,8 @@ pub fn apply_theme(ctx: &egui::Context) {
     ctx.set_style(style);
 }
 
-fn widget_visuals(fill: Color32, border: Color32, fg: Color32) -> egui::WidgetVisuals {
-    egui::WidgetVisuals {
+fn widget_visuals(fill: Color32, border: Color32, fg: Color32) -> egui::style::WidgetVisuals {
+    egui::style::WidgetVisuals {
         bg_fill: fill,
         weak_bg_fill: fill,
         bg_stroke: egui::Stroke::new(metrics::STROKE, border),

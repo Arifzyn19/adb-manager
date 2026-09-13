@@ -174,7 +174,7 @@ pub fn segmented<T: Copy + PartialEq>(ui: &mut Ui, options: &[(T, &str)], curren
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         for (value, label) in options {
-            let active = *current == **value;
+            let active = *current == *value;
             let resp = ui.add(
                 egui::Button::new(RichText::new(*label).color(if active {
                     Color32::WHITE
@@ -197,7 +197,7 @@ pub fn segmented<T: Copy + PartialEq>(ui: &mut Ui, options: &[(T, &str)], curren
                 .corner_radius(metrics::RADIUS_WIDGET.into()),
             );
             if resp.clicked() {
-                *current = **value;
+                *current = *value;
                 changed = true;
             }
         }
