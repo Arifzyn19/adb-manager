@@ -1,8 +1,8 @@
 //! App Manager page (Phase 4): installed apps, filters, search, details,
 //! actions (launch / force-stop / clear / uninstall / extract APK).
 
-use crate::apps::{AppActionKind, AppDetailTab, AppFilter, AppInfo};
-use crate::state::{AppState, PendingAppAction};
+use crate::apps::{AppFilter, AppInfo};
+use crate::state::{AppActionKind, AppDetailTab, AppState, PendingAppAction};
 use crate::ui::theme::{mono, StatusColors};
 
 #[derive(Default)]
@@ -408,7 +408,9 @@ fn components_tab(ui: &mut egui::Ui, title: &str, items: &[String]) {
 fn actions_row(ui: &mut egui::Ui, state: &mut AppState, info: &AppInfo, actions: &mut AppsActions) {
     let busy = state.apps_view.busy.is_some();
     ui.horizontal_wrapped(|ui| {
-        ui.set_enabled(!busy);
+        if busy {
+            ui.disable();
+        }
         for kind in [
             AppActionKind::Launch,
             AppActionKind::ForceStop,

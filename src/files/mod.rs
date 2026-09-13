@@ -9,7 +9,6 @@ pub mod entry;
 pub mod manager;
 pub mod parser;
 
-pub use entry::{check_child_name, check_mutable_path, join_remote, normalize_dir, parent_dir};
+pub use entry::{join_remote, parent_dir};
 pub use entry::{FileEntry, FileKind};
 pub use manager::{delete_path, download_entry, list_dir, make_dir, rename_path, upload_files};
-pub use parser::parse_ls_long;

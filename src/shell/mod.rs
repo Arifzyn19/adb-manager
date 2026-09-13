@@ -6,5 +6,4 @@
 
 pub mod session;
 
-pub use session::{mock_output, parse_line, MARK_PREFIX};
-pub use session::{validate_command, wrap_command, BlockAssembler, ShellLine, ShellWorker};
+pub use session::ShellWorker;

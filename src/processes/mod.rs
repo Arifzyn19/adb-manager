@@ -8,5 +8,4 @@ pub mod parser;
 pub mod process;
 
 pub use manager::{fetch_processes, kill_process};
-pub use parser::{parse_ps_processes, parse_top_cpu};
 pub use process::{ProcessInfo, SortColumn};

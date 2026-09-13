@@ -9,9 +9,7 @@ pub mod device;
 pub mod errors;
 pub mod parser;
 
-pub use client::{
-    candidate_adb_paths, detect_adb, AdbClient, ChildKiller, OutputSnapshot, StreamReader,
-};
-pub use command::{AdbCommand, AdbCommandBuilder, PackageFilter};
+pub use client::{candidate_adb_paths, detect_adb, AdbClient, ChildKiller};
+pub use command::PackageFilter;
 pub use device::{Device, DeviceState, Transport};
 pub use errors::AdbError;

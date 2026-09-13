@@ -9,7 +9,7 @@ pub mod package;
 pub mod parser;
 
 pub use manager::{
-    apk_paths, clear_app, fetch_app_details, fetch_package_entries, fetch_running_set,
-    force_stop_app, launch_app, pull_apk, uninstall_app,
+    clear_app, fetch_app_details, fetch_package_entries, force_stop_app, launch_app, pull_apk,
+    uninstall_app,
 };
 pub use package::{AppFilter, AppInfo, PackageEntry, PermissionStatus};

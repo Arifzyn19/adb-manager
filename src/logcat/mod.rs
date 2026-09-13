@@ -13,7 +13,7 @@ pub mod filter;
 pub mod parser;
 pub mod stream;
 
-pub use crash::{system_frame, CrashDetector, CrashReason, CrashReport};
+pub use crash::{system_frame, CrashReport};
 pub use filter::{entry_matches, LogViewFilter};
-pub use parser::{parse_threadtime_line, LogEntry, LogLevel};
+pub use parser::{LogEntry, LogLevel};
 pub use stream::{LogBuffer, LogcatWorker};

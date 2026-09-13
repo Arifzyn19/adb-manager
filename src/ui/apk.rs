@@ -207,8 +207,11 @@ fn show_overview(
         ui.monospace(&last);
     }
     ui.horizontal(|ui| {
-        ui.set_enabled(!state.apk.installing && state.selected_device().is_some());
-        if ui.button("Install APK").clicked() {
+        let can_install = !state.apk.installing && state.selected_device().is_some();
+        if ui
+            .add_enabled(can_install, egui::Button::new("Install APK"))
+            .clicked()
+        {
             if let (Some(serial), Some(path)) =
                 (state.selected_serial.clone(), state.apk.path.clone())
             {

@@ -10,6 +10,6 @@ pub mod camera;
 pub mod pairing;
 pub mod qr;
 
-pub use camera::{CameraFrame, CameraScanner};
+pub use camera::CameraScanner;
 pub use pairing::{validate_pair_input, PairingRequest, PairingState};
-pub use qr::{decode_qr_from_image_bytes, parse_wireless_qr, QrError, WifiQr};
+pub use qr::{decode_first_qr, decode_wireless_qr, parse_wireless_qr, QrError};

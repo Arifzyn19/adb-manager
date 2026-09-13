@@ -123,15 +123,15 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> She
         }
         let cmd = state.shell.input.trim().to_string();
         let can_send = !cmd.is_empty() && state.shell.running.is_none();
-        ui.set_enabled(can_send);
-        let send = ui.button("Send").clicked()
+        let send = ui
+            .add_enabled(can_send, egui::Button::new("Send"))
+            .clicked()
             || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && can_send);
         if send {
             state.shell.input.clear();
             state.shell.hist_idx = None;
             actions.send = Some(cmd);
         }
-        ui.set_enabled(true);
         if state.shell.running.is_some() && ui.button("Stop").clicked() {
             actions.stop = true;
         }

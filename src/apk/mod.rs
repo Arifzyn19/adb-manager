@@ -11,8 +11,5 @@ pub mod manager;
 pub mod manifest;
 pub mod permissions;
 
-pub use certificate::{ApkSignatures, CertSummary};
-pub use inspector::{inspect_apk_bytes, inspect_apk_file, ApkInfo, ZipEntryInfo};
-pub use manager::{install_apks, validate_apk_paths};
-pub use manifest::{parse_manifest, ManifestData};
-pub use permissions::{classify_permission, describe_permission, PermissionInfo};
+pub use inspector::{ApkInfo, ZipEntryInfo};
+pub use manager::{inspect_apk, install_apks};

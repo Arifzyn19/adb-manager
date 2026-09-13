@@ -120,7 +120,9 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut AppState) -> Fil
         ui.label("New folder");
         let resp = ui.text_edit_singleline(&mut state.files.mkdir_name);
         let name = state.files.mkdir_name.trim().to_string();
-        ui.set_enabled(!name.is_empty() && state.files.busy.is_none());
+        if name.is_empty() || state.files.busy.is_some() {
+            ui.disable();
+        }
         let create = ui.button("Create").clicked()
             || (resp.lost_focus()
                 && ui.input(|i| i.key_pressed(egui::Key::Enter))
@@ -227,7 +229,9 @@ fn file_row(
     }
 
     ui.horizontal(|ui| {
-        ui.set_enabled(!busy);
+        if busy {
+            ui.disable();
+        }
         ui.label(entry.kind.icon());
         let mut label = entry.name.clone();
         if entry.kind == FileKind::Symlink {

@@ -166,7 +166,9 @@ fn proc_row(
 ) {
     let busy = state.proc_view.busy.is_some();
     ui.horizontal(|ui| {
-        ui.set_enabled(!busy);
+        if busy {
+            ui.disable();
+        }
         ui.add_sized([70.0, 18.0], egui::Label::new(mono(p.pid.to_string())));
         ui.add_sized(
             [220.0, 18.0],

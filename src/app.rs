@@ -1,13 +1,13 @@
 //! eframe application shell: owns state, workers, channels, menus.
 
 use crate::adb::{detect_adb, AdbClient};
-use crate::apps::{fetch_app_details, fetch_package_entries, AppActionKind};
+use crate::apps::{fetch_app_details, fetch_package_entries};
 use crate::config::AppConfig;
 use crate::device::{fetch_info, DeviceManager, SavedDevices};
 use crate::events::{AppEvent, Toast};
 use crate::logcat::LogcatWorker;
 use crate::shell::ShellWorker;
-use crate::state::{AdbStatus, AppState, Page};
+use crate::state::{AdbStatus, AppActionKind, AppState, Page};
 use crate::ui::{self, dialogs::ConnectDialogState};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
@@ -584,25 +584,22 @@ impl AdbManagerApp {
             return;
         }
         self.ensure_shell(device.serial.clone());
-        let mut failed: Option<String> = None;
-        if let Some(worker) = &self.shell_worker {
-            if let Err(e) = worker.send(&cmd) {
-                failed = Some(e.to_string());
-            } else {
-                self.state.shell.running = Some(cmd);
-                return;
-            }
-        } else {
-            failed = Some("Shell session could not start.".to_string());
-        }
+        let err = match &self.shell_worker {
+            Some(worker) => match worker.send(&cmd) {
+                Ok(()) => {
+                    self.state.shell.running = Some(cmd);
+                    return;
+                }
+                Err(e) => e.to_string(),
+            },
+            None => "Shell session could not start.".to_string(),
+        };
         // Send failed (died between ensure and write): drop the worker so
         // the next Send respawns, and surface the reason.
         self.stop_shell();
         self.state.shell.running = None;
-        if let Some(message) = failed {
-            self.state
-                .push_toast(Toast::error(format!("Shell send failed: {message}")));
-        }
+        self.state
+            .push_toast(Toast::error(format!("Shell send failed: {err}")));
     }
 
     /// Inspect one APK file on a worker thread (ZIP + AXML decode).
@@ -1314,7 +1311,7 @@ impl eframe::App for AdbManagerApp {
                         if let Some(serial) = self.state.selected_serial.clone() {
                             let tag = format!("{package}:{}", kind.label());
                             self.state.apps_view.busy = Some(tag);
-                            if kind == crate::apps::AppActionKind::Extract {
+                            if kind == AppActionKind::Extract {
                                 if let Some(dir) = rfd::FileDialog::new()
                                     .set_title("Choose extraction folder")
                                     .pick_folder()

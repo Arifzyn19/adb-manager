@@ -69,8 +69,10 @@ fn show_screen(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActio
     ui.strong("SCREEN");
     egui::Frame::group(ui.style()).show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.set_enabled(!state.tools.shot_busy);
-            if ui.button("Take Screenshot").clicked() {
+            if ui
+                .add_enabled(!state.tools.shot_busy, egui::Button::new("Take Screenshot"))
+                .clicked()
+            {
                 actions.op = Some(ToolOp::Screenshot);
             }
             if state.tools.shot_busy {
@@ -177,17 +179,18 @@ fn show_system(
     egui::Frame::group(ui.style()).show(ui, |ui| {
         let busy = state.tools.busy.is_some();
         ui.horizontal_wrapped(|ui| {
-            ui.set_enabled(!busy);
-            for mode in [
-                RebootMode::System,
-                RebootMode::Recovery,
-                RebootMode::Bootloader,
-            ] {
-                if ui.button(mode.label()).clicked() {
-                    // Reboots always confirm — the device goes away.
-                    state.tools.confirm_reboot = Some(mode);
+            ui.add_enabled_ui(!busy, |ui| {
+                for mode in [
+                    RebootMode::System,
+                    RebootMode::Recovery,
+                    RebootMode::Bootloader,
+                ] {
+                    if ui.button(mode.label()).clicked() {
+                        // Reboots always confirm — the device goes away.
+                        state.tools.confirm_reboot = Some(mode);
+                    }
                 }
-            }
+            });
             if let Some(b) = state.tools.busy.clone() {
                 ui.spinner();
                 ui.label(format!("Working… ({b})"));
@@ -376,7 +379,9 @@ fn show_adb(ui: &mut egui::Ui, state: &mut AppState, actions: &mut ToolsActions)
     ui.strong("ADB");
     egui::Frame::group(ui.style()).show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.set_enabled(state.tools.busy.is_none());
+            if state.tools.busy.is_some() {
+                ui.disable();
+            }
             if ui.button("Restart ADB server").clicked() {
                 actions.op = Some(ToolOp::RestartAdb);
             }
